@@ -6,6 +6,7 @@ import (
 	MQTT "github.com/eclipse/paho.mqtt.golang"
 	"io"
 	"log"
+	"strconv"
 )
 
 type Publisher interface {
@@ -85,7 +86,7 @@ func (p *pahoMqttPubSub) Connect() {
 	}
 }
 
-type MqttValue string
+type MqttValue []byte
 
 func NewMqttValue(v interface{}) MqttValue {
 	switch val := v.(type) {
@@ -99,14 +100,47 @@ func NewMqttValue(v interface{}) MqttValue {
 		return MqttValue(mode.ToString(val))
 	case bool:
 		if val {
-			return "ON"
+			return []byte("ON")
 		} else {
-			return "OFF"
+			return []byte("OFF")
 		}
+	case []byte:
+		return val
 	case MqttValue:
 		return val
 	default:
 		log.Printf("invalid mqtt value: %v", val)
-		return ""
+		return nil
+	}
+}
+
+func (m *MqttValue) IntValue() (int, error) {
+	return strconv.Atoi(string(*m))
+}
+
+func (m *MqttValue) Float32Value() (float32, error) {
+	val := string(*m)
+	r, err := strconv.ParseFloat(val, 32)
+	return float32(r), err
+}
+func (m *MqttValue) Float64Value() (float64, error) {
+	val := string(*m)
+	return strconv.ParseFloat(val, 64)
+}
+func (m *MqttValue) StringValue() (string, error) {
+	return string(*m), nil
+}
+func (m *MqttValue) ByteSliceValue() ([]byte, error) {
+	return *m, nil
+}
+func (m *MqttValue) BoolValue() (bool, error) {
+	val := string(*m)
+	switch val {
+	case "ON":
+		return true, nil
+	case "OFF":
+		return false, nil
+	default:
+		return false, fmt.Errorf("value %v can't be converted to bool", val)
 	}
 }

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"github.com/cyrilix/robocar-base/mode"
 	"github.com/cyrilix/robocar-base/mqttdevice"
+	"github.com/cyrilix/robocar-base/testtools"
 	"net"
-	"sync"
 	"testing"
 	"time"
 )
@@ -30,7 +30,7 @@ func TestArduinoPart_Update(t *testing.T) {
 	}
 	defer conn.Close()
 
-	a := ArduinoPart{serial: conn, pubFrequency: 100, pub: &fakePublisher{msg: make(map[string]interface{})}}
+	a := Part{serial: conn, pubFrequency: 100, pub: testtools.NewFakePublisher()}
 	go a.Start()
 
 	channel1, channel2, channel3, channel4, channel5, channel6, distanceCm := 678, 910, 1112, 1678, 1910, 112, 128
@@ -61,7 +61,6 @@ func TestArduinoPart_Update(t *testing.T) {
 			fmt.Sprintf("12370,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, channel2, channel3, channel4, 1003, channel6, distanceCm),
 			-1., -1., mode.DriveModeUser, true, distanceCm},
 
-
 		{"DriveMode: user",
 			fmt.Sprintf("12375,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, channel2, channel3, channel4, channel5, 998, distanceCm),
 			-1., -1., mode.DriveModeUser, false, distanceCm},
@@ -76,7 +75,6 @@ func TestArduinoPart_Update(t *testing.T) {
 		{"DriveMode: user",
 			fmt.Sprintf("12390,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, channel2, channel3, channel4, channel5, 1003, distanceCm),
 			-1., -1., mode.DriveModeUser, false, distanceCm},
-
 
 		{"Sterring: over left",
 			fmt.Sprintf("12395,%d,%d,%d,%d,%d,%d,50,%d\n", 99, channel2, channel3, channel4, channel5, channel6, distanceCm),
@@ -93,7 +91,6 @@ func TestArduinoPart_Update(t *testing.T) {
 		{"Sterring: over right",
 			fmt.Sprintf("12415,%d,%d,%d,%d,%d,%d,50,%d\n", 2998, channel2, channel3, channel4, channel5, channel6, distanceCm),
 			-1., 1., mode.DriveModeUser, false, distanceCm},
-
 
 		{"Throttle: over down",
 			fmt.Sprintf("12420,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, 99, channel3, channel4, channel5, channel6, distanceCm),
@@ -152,17 +149,6 @@ func TestArduinoPart_Update(t *testing.T) {
 	}
 }
 
-type fakePublisher struct {
-	muMsg sync.Mutex
-	msg   map[string]interface{}
-}
-
-func (f *fakePublisher) Publish(topic string, payload mqttdevice.MqttValue) {
-	f.muMsg.Lock()
-	defer f.muMsg.Unlock()
-	f.msg[topic] = payload
-}
-
 func TestPublish(t *testing.T) {
 	ln, err := net.Listen("tcp", ":8080")
 	if err != nil {
@@ -183,8 +169,8 @@ func TestPublish(t *testing.T) {
 	defer conn.Close()
 
 	pubFrequency := 100.
-	p := fakePublisher{msg: make(map[string]interface{})}
-	a := ArduinoPart{serial: conn, pub: &p, pubFrequency: pubFrequency, topicBase: "car/part/arduino/"}
+	p := testtools.NewFakePublisher()
+	a := Part{serial: conn, pub: p, pubFrequency: pubFrequency, topicBase: "car/part/arduino/"}
 	go a.Start()
 	defer a.Stop()
 
@@ -196,11 +182,11 @@ func TestPublish(t *testing.T) {
 		expectedThrottle, expectedSteering, expectedDriveMode, expectedSwitchRecord, expectedDistance mqttdevice.MqttValue
 	}{
 		{-1, 1, mode.DriveModeUser, false, 55,
-			"-1.00", "1.00", "user", "OFF", "55"},
+			mqttdevice.NewMqttValue("-1.00"), mqttdevice.NewMqttValue("1.00"), mqttdevice.NewMqttValue("user"), mqttdevice.NewMqttValue("OFF"), mqttdevice.NewMqttValue("55")},
 		{0, 0, mode.DriveModePilot, true, 43,
-			"0.00", "0.00", "pilot", "ON", "43"},
+			mqttdevice.NewMqttValue("0.00"), mqttdevice.NewMqttValue("0.00"), mqttdevice.NewMqttValue("pilot"), mqttdevice.NewMqttValue("ON"), mqttdevice.NewMqttValue("43")},
 		{0.87, -0.58, mode.DriveModePilot, true, 21,
-			"0.87", "-0.58", "pilot", "ON", "21"},
+			mqttdevice.NewMqttValue("0.87"), mqttdevice.NewMqttValue("-0.58"), mqttdevice.NewMqttValue("pilot"), mqttdevice.NewMqttValue("ON"), mqttdevice.NewMqttValue("21")},
 	}
 
 	for _, c := range cases {
@@ -215,23 +201,20 @@ func TestPublish(t *testing.T) {
 		time.Sleep(time.Second / time.Duration(int(pubFrequency)))
 		time.Sleep(500 * time.Millisecond)
 
-		p.muMsg.Lock()
-		if v := p.msg["car/part/arduino/throttle"]; v != c.expectedThrottle {
+		if v := p.PublishedEvent("car/part/arduino/throttle"); string(v) != string(c.expectedThrottle) {
 			t.Errorf("msg(car/part/arduino/throttle): %v, wants %v", v, c.expectedThrottle)
 		}
-		if v := p.msg["car/part/arduino/steering"]; v != c.expectedSteering {
+		if v := p.PublishedEvent("car/part/arduino/steering"); string(v) != string(c.expectedSteering) {
 			t.Errorf("msg(car/part/arduino/steering): %v, wants %v", v, c.expectedSteering)
 		}
-		if v := p.msg["car/part/arduino/drive_mode"]; v != c.expectedDriveMode {
+		if v := p.PublishedEvent("car/part/arduino/drive_mode"); string(v) != string(c.expectedDriveMode) {
 			t.Errorf("msg(car/part/arduino/drive_mode): %v, wants %v", v, c.expectedDriveMode)
 		}
-		if v := p.msg["car/part/arduino/switch_record"]; v != c.expectedSwitchRecord {
+		if v := p.PublishedEvent("car/part/arduino/switch_record"); string(v) != string(c.expectedSwitchRecord) {
 			t.Errorf("msg(car/part/arduino/switch_record): %v, wants %v", v, c.expectedSwitchRecord)
 		}
-		if v := p.msg["car/part/arduino/distance_cm"]; v != c.expectedDistance {
+		if v := p.PublishedEvent("car/part/arduino/distance_cm"); string(v) != string(c.expectedDistance) {
 			t.Errorf("msg(car/part/arduino/distance_cm): %v, wants %v", v, c.expectedThrottle)
 		}
-		p.muMsg.Unlock()
 	}
-
 }

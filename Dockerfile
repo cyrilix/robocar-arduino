@@ -1,14 +1,15 @@
-FROM golang:alpine as builder
+FROM --platform=$BUILDPLATFORM golang:alpine AS builder
 
-ARG GOOS=linux
-ARG GOARCH=amd64
-ARG GOARM=""
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
 
 WORKDIR /go/src
 ADD . .
-RUN CGO_ENABLED=0 GOOS=${GOOS} GOARCH=${GOARCH} GOARM=${GOARM} go build -mod vendor -tags netgo ./cmd/rc-arduino/
 
-
+RUN GOOS=$(echo $TARGETPLATFORM | cut -f1 -d/) && \
+    GOARCH=$(echo $TARGETPLATFORM | cut -f2 -d/) && \
+    GOARM=$(echo $TARGETPLATFORM | cut -f3 -d/ | sed "s/v//" ) && \
+    CGO_ENABLED=0 GOOS=${GOOS} GOARCH=${GOARCH} GOARM=${GOARM} go build -a -mod vendor -tags netgo ./cmd/rc-arduino/
 
 
 FROM gcr.io/distroless/static
