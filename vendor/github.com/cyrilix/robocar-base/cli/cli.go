@@ -3,6 +3,7 @@ package cli
 import (
 	"flag"
 	"fmt"
+	"github.com/cyrilix/robocar-base/service"
 	MQTT "github.com/eclipse/paho.mqtt.golang"
 	"log"
 	"os"
@@ -33,13 +34,23 @@ func SetIntDefaultValueFromEnv(value *int, key string, defaultValue int) error {
 	}
 	return nil
 }
-
-type Part interface {
-	Start() error
-	Stop()
+func SetFloat64DefaultValueFromEnv(value *float64, key string, defaultValue float64) error {
+	var sVal string
+	if os.Getenv(key) != "" {
+		sVal = os.Getenv(key)
+		val, err := strconv.ParseFloat(sVal, 64)
+		if err != nil {
+			log.Printf("unable to convert string to float: %v", err)
+			return err
+		}
+		*value = val
+	} else {
+		*value = defaultValue
+	}
+	return nil
 }
 
-func HandleExit(p Part) {
+func HandleExit(p service.Part) {
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, os.Kill, os.Interrupt, syscall.SIGTERM)
 
@@ -67,6 +78,15 @@ func InitIntFlag(key string, defValue int) int {
 	err := SetIntDefaultValueFromEnv(&value, key, defValue)
 	if err != nil {
 		log.Panicf("invalid int value: %v", err)
+	}
+	return value
+}
+
+func InitFloat64Flag(key string, defValue float64) float64 {
+	var value float64
+	err := SetFloat64DefaultValueFromEnv(&value, key, defValue)
+	if err != nil {
+		log.Panicf("invalid value: %v", err)
 	}
 	return value
 }

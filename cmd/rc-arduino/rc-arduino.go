@@ -43,12 +43,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	flag.Parse()
-	if len(os.Args) <= 1 {
-		flag.PrintDefaults()
-		os.Exit(1)
-	}
-
 	pubSub := mqttdevice.NewPahoMqttPubSub(mqttBroker, username, password, clientId, mqttQos, mqttRetain)
 	defer func() {
 		err := pubSub.Close()

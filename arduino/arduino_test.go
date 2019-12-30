@@ -3,9 +3,9 @@ package arduino
 import (
 	"bufio"
 	"fmt"
-	"github.com/cyrilix/robocar-base/mode"
 	"github.com/cyrilix/robocar-base/mqttdevice"
 	"github.com/cyrilix/robocar-base/testtools"
+	"github.com/cyrilix/robocar-base/types"
 	"net"
 	"testing"
 	"time"
@@ -37,83 +37,83 @@ func TestArduinoPart_Update(t *testing.T) {
 	cases := []struct {
 		name, content                      string
 		expectedThrottle, expectedSteering float32
-		expectedDriveMode                  mode.DriveMode
+		expectedDriveMode                  types.DriveMode
 		expectedSwitchRecord               bool
 		expectedDistanceCm                 int
 	}{
 		{"Good value",
 			fmt.Sprintf("12345,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, channel2, channel3, channel4, channel5, channel6, distanceCm),
-			-1., -1., mode.DriveModeUser, false, distanceCm},
+			-1., -1., types.DriveModeUser, false, distanceCm},
 		{"Unparsable line",
 			"12350,invalid line\n",
-			-1., -1., mode.DriveModeUser, false, distanceCm},
+			-1., -1., types.DriveModeUser, false, distanceCm},
 		{"Switch record on",
 			fmt.Sprintf("12355,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, channel2, channel3, channel4, 998, channel6, distanceCm),
-			-1., -1., mode.DriveModeUser, true, distanceCm},
+			-1., -1., types.DriveModeUser, true, distanceCm},
 
 		{"Switch record off",
 			fmt.Sprintf("12360,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, channel2, channel3, channel4, 1987, channel6, distanceCm),
-			-1., -1., mode.DriveModeUser, false, distanceCm},
+			-1., -1., types.DriveModeUser, false, distanceCm},
 		{"Switch record off",
 			fmt.Sprintf("12365,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, channel2, channel3, channel4, 1850, channel6, distanceCm),
-			-1., -1., mode.DriveModeUser, false, distanceCm},
+			-1., -1., types.DriveModeUser, false, distanceCm},
 		{"Switch record on",
 			fmt.Sprintf("12370,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, channel2, channel3, channel4, 1003, channel6, distanceCm),
-			-1., -1., mode.DriveModeUser, true, distanceCm},
+			-1., -1., types.DriveModeUser, true, distanceCm},
 
 		{"DriveMode: user",
 			fmt.Sprintf("12375,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, channel2, channel3, channel4, channel5, 998, distanceCm),
-			-1., -1., mode.DriveModeUser, false, distanceCm},
+			-1., -1., types.DriveModeUser, false, distanceCm},
 		{"DriveMode: pilot",
 			fmt.Sprintf("12380,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, channel2, channel3, channel4, channel5, 1987, distanceCm),
-			-1., -1., mode.DriveModePilot, false, distanceCm},
+			-1., -1., types.DriveModePilot, false, distanceCm},
 		{"DriveMode: pilot",
 			fmt.Sprintf("12385,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, channel2, channel3, channel4, channel5, 1850, distanceCm),
-			-1., -1., mode.DriveModePilot, false, distanceCm},
+			-1., -1., types.DriveModePilot, false, distanceCm},
 
 		// DriveMode: user
 		{"DriveMode: user",
 			fmt.Sprintf("12390,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, channel2, channel3, channel4, channel5, 1003, distanceCm),
-			-1., -1., mode.DriveModeUser, false, distanceCm},
+			-1., -1., types.DriveModeUser, false, distanceCm},
 
 		{"Sterring: over left",
 			fmt.Sprintf("12395,%d,%d,%d,%d,%d,%d,50,%d\n", 99, channel2, channel3, channel4, channel5, channel6, distanceCm),
-			-1., -1., mode.DriveModeUser, false, distanceCm},
+			-1., -1., types.DriveModeUser, false, distanceCm},
 		{"Sterring: left",
 			fmt.Sprintf("12400,%d,%d,%d,%d,%d,%d,50,%d\n", 998, channel2, channel3, channel4, channel5, channel6, distanceCm),
-			-1., -0.93, mode.DriveModeUser, false, distanceCm},
+			-1., -0.93, types.DriveModeUser, false, distanceCm},
 		{"Sterring: middle",
 			fmt.Sprintf("12405,%d,%d,%d,%d,%d,%d,50,%d\n", 1450, channel2, channel3, channel4, channel5, channel6, distanceCm),
-			-1., -0.04, mode.DriveModeUser, false, distanceCm},
+			-1., -0.04, types.DriveModeUser, false, distanceCm},
 		{"Sterring: right",
 			fmt.Sprintf("12410,%d,%d,%d,%d,%d,%d,50,%d\n", 1958, channel2, channel3, channel4, channel5, channel6, distanceCm),
-			-1., 0.96, mode.DriveModeUser, false, distanceCm},
+			-1., 0.96, types.DriveModeUser, false, distanceCm},
 		{"Sterring: over right",
 			fmt.Sprintf("12415,%d,%d,%d,%d,%d,%d,50,%d\n", 2998, channel2, channel3, channel4, channel5, channel6, distanceCm),
-			-1., 1., mode.DriveModeUser, false, distanceCm},
+			-1., 1., types.DriveModeUser, false, distanceCm},
 
 		{"Throttle: over down",
 			fmt.Sprintf("12420,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, 99, channel3, channel4, channel5, channel6, distanceCm),
-			-1., -1., mode.DriveModeUser, false, distanceCm},
+			-1., -1., types.DriveModeUser, false, distanceCm},
 		{"Throttle: down",
 			fmt.Sprintf("12425,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, 998, channel3, channel4, channel5, channel6, distanceCm),
-			-0.95, -1., mode.DriveModeUser, false, distanceCm},
+			-0.95, -1., types.DriveModeUser, false, distanceCm},
 		{"Throttle: stop",
 			fmt.Sprintf("12430,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, 1450, channel3, channel4, channel5, channel6, distanceCm),
-			-0.03, -1., mode.DriveModeUser, false, distanceCm},
+			-0.03, -1., types.DriveModeUser, false, distanceCm},
 		{"Throttle: up",
 			fmt.Sprintf("12435,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, 1948, channel3, channel4, channel5, channel6, distanceCm),
-			0.99, -1., mode.DriveModeUser, false, distanceCm},
+			0.99, -1., types.DriveModeUser, false, distanceCm},
 		{"Throttle: over up",
 			fmt.Sprintf("12440,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, 2998, channel3, channel4, channel5, channel6, distanceCm),
-			1., -1., mode.DriveModeUser, false, distanceCm},
+			1., -1., types.DriveModeUser, false, distanceCm},
 
 		{"Distance cm",
 			fmt.Sprintf("12445,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, channel2, channel3, channel4, channel5, channel6, 43),
-			-1., -1., mode.DriveModeUser, false, 43},
+			-1., -1., types.DriveModeUser, false, 43},
 		{"Distance cm with \r",
 			fmt.Sprintf("12450,%d,%d,%d,%d,%d,%d,50,%d\r\n", channel1, channel2, channel3, channel4, channel5, channel6, 43),
-			-1., -1., mode.DriveModeUser, false, 43},
+			-1., -1., types.DriveModeUser, false, 43},
 	}
 
 	for _, c := range cases {
@@ -175,18 +175,30 @@ func TestPublish(t *testing.T) {
 	defer a.Stop()
 
 	cases := []struct {
-		throttle, steering                                                                            float32
-		driveMode                                                                                     mode.DriveMode
+		throttle, steering                                                                            float64
+		driveMode                                                                                     types.DriveMode
 		switchRecord                                                                                  bool
 		distanceCm                                                                                    int
 		expectedThrottle, expectedSteering, expectedDriveMode, expectedSwitchRecord, expectedDistance mqttdevice.MqttValue
 	}{
-		{-1, 1, mode.DriveModeUser, false, 55,
-			mqttdevice.NewMqttValue("-1.00"), mqttdevice.NewMqttValue("1.00"), mqttdevice.NewMqttValue("user"), mqttdevice.NewMqttValue("OFF"), mqttdevice.NewMqttValue("55")},
-		{0, 0, mode.DriveModePilot, true, 43,
-			mqttdevice.NewMqttValue("0.00"), mqttdevice.NewMqttValue("0.00"), mqttdevice.NewMqttValue("pilot"), mqttdevice.NewMqttValue("ON"), mqttdevice.NewMqttValue("43")},
-		{0.87, -0.58, mode.DriveModePilot, true, 21,
-			mqttdevice.NewMqttValue("0.87"), mqttdevice.NewMqttValue("-0.58"), mqttdevice.NewMqttValue("pilot"), mqttdevice.NewMqttValue("ON"), mqttdevice.NewMqttValue("21")},
+		{-1, 1, types.DriveModeUser, false, 55,
+			mqttdevice.NewMqttValue(types.Throttle{Value: -1., Confidence: 1.}),
+			mqttdevice.NewMqttValue(types.Steering{Value: 1.0, Confidence: 1.}),
+			mqttdevice.NewMqttValue("user"),
+			mqttdevice.NewMqttValue("OFF"),
+			mqttdevice.NewMqttValue("55")},
+		{0, 0, types.DriveModePilot, true, 43,
+			mqttdevice.NewMqttValue(types.Throttle{Confidence: 1.}),
+			mqttdevice.NewMqttValue(types.Steering{Confidence: 1.}),
+			mqttdevice.NewMqttValue("pilot"),
+			mqttdevice.NewMqttValue("ON"),
+			mqttdevice.NewMqttValue("43")},
+		{0.87, -0.58, types.DriveModePilot, true, 21,
+			mqttdevice.NewMqttValue(types.Throttle{Value: 0.87, Confidence: 1.}),
+			mqttdevice.NewMqttValue(types.Steering{Value: -0.58, Confidence: 1.}),
+			mqttdevice.NewMqttValue("pilot"),
+			mqttdevice.NewMqttValue("ON"),
+			mqttdevice.NewMqttValue("21")},
 	}
 
 	for _, c := range cases {
@@ -208,7 +220,8 @@ func TestPublish(t *testing.T) {
 			t.Errorf("msg(car/part/arduino/steering): %v, wants %v", v, c.expectedSteering)
 		}
 		if v := p.PublishedEvent("car/part/arduino/drive_mode"); string(v) != string(c.expectedDriveMode) {
-			t.Errorf("msg(car/part/arduino/drive_mode): %v, wants %v", v, c.expectedDriveMode)
+			val, _ := v.StringValue()
+			t.Errorf("msg(car/part/arduino/drive_mode): %v, wants %v", val, string(c.expectedDriveMode))
 		}
 		if v := p.PublishedEvent("car/part/arduino/switch_record"); string(v) != string(c.expectedSwitchRecord) {
 			t.Errorf("msg(car/part/arduino/switch_record): %v, wants %v", v, c.expectedSwitchRecord)

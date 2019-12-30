@@ -1,8 +1,9 @@
 package mqttdevice
 
 import (
+	"encoding/json"
 	"fmt"
-	"github.com/cyrilix/robocar-base/mode"
+	"github.com/cyrilix/robocar-base/types"
 	MQTT "github.com/eclipse/paho.mqtt.golang"
 	"io"
 	"log"
@@ -96,8 +97,6 @@ func NewMqttValue(v interface{}) MqttValue {
 		return MqttValue(fmt.Sprintf("%0.2f", val))
 	case int, int8, int16, int32, int64:
 		return MqttValue(fmt.Sprintf("%d", val))
-	case mode.DriveMode:
-		return MqttValue(mode.ToString(val))
 	case bool:
 		if val {
 			return []byte("ON")
@@ -109,8 +108,12 @@ func NewMqttValue(v interface{}) MqttValue {
 	case MqttValue:
 		return val
 	default:
-		log.Printf("invalid mqtt value: %v", val)
-		return nil
+		jsonValue, err := json.Marshal(v)
+		if err != nil {
+			log.Printf("unable to mashall to json value '%v': %v", v, err)
+			return nil
+		}
+		return jsonValue
 	}
 }
 
@@ -129,6 +132,13 @@ func (m *MqttValue) Float64Value() (float64, error) {
 }
 func (m *MqttValue) StringValue() (string, error) {
 	return string(*m), nil
+}
+func (m *MqttValue) DriveModeValue() (types.DriveMode, error) {
+	val, err := m.IntValue()
+	if err != nil {
+		return types.DriveModeInvalid, err
+	}
+	return types.DriveMode(val), nil
 }
 func (m *MqttValue) ByteSliceValue() ([]byte, error) {
 	return *m, nil

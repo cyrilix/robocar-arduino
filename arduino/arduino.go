@@ -2,8 +2,8 @@ package arduino
 
 import (
 	"bufio"
-	"github.com/cyrilix/robocar-base/mode"
 	"github.com/cyrilix/robocar-base/mqttdevice"
+	"github.com/cyrilix/robocar-base/types"
 	"github.com/tarm/serial"
 	"io"
 	"log"
@@ -32,11 +32,11 @@ type Part struct {
 	pubFrequency float64
 	serial       io.Reader
 	mutex        sync.Mutex
-	steering     float32
-	throttle     float32
+	steering     float64
+	throttle     float64
 	distanceCm   int
 	ctrlRecord   bool
-	driveMode    mode.DriveMode
+	driveMode    types.DriveMode
 	debug        bool
 }
 
@@ -46,7 +46,7 @@ func NewPart(name string, baud int, pub mqttdevice.Publisher, topicBase string, 
 	if err != nil {
 		log.Panicf("unable to open serial port: %v", err)
 	}
-	return &Part{serial: s, pub: pub, topicBase: topicBase, pubFrequency: pubFrequency, driveMode: mode.DriveModeInvalid, debug: debug}
+	return &Part{serial: s, pub: pub, topicBase: topicBase, pubFrequency: pubFrequency, driveMode: types.DriveModeInvalid, debug: debug}
 }
 
 func (a *Part) Start() error {
@@ -106,7 +106,7 @@ func (a *Part) processChannel1(v string) {
 	} else if value > MaxPwmAngle {
 		value = MaxPwmAngle
 	}
-	a.steering = ((float32(value)-MinPwmAngle)/(MaxPwmAngle-MinPwmAngle))*2.0 - 1.0
+	a.steering = ((float64(value)-MinPwmAngle)/(MaxPwmAngle-MinPwmAngle))*2.0 - 1.0
 }
 
 func (a *Part) processChannel2(v string) {
@@ -122,7 +122,7 @@ func (a *Part) processChannel2(v string) {
 	} else if value > MaxPwmThrottle {
 		value = MaxPwmThrottle
 	}
-	a.throttle = ((float32(value)-MinPwmThrottle)/(MaxPwmThrottle-MinPwmThrottle))*2.0 - 1.0
+	a.throttle = ((float64(value)-MinPwmThrottle)/(MaxPwmThrottle-MinPwmThrottle))*2.0 - 1.0
 }
 
 func (a *Part) processChannel3(v string) {
@@ -170,15 +170,15 @@ func (a *Part) processChannel6(v string) {
 		return
 	}
 	if value > 1800 {
-		if a.driveMode != mode.DriveModePilot {
-			log.Printf("Update channel 6 with value %v, new user_mode: %v", value, mode.DriveModeUser)
-			a.driveMode = mode.DriveModePilot
+		if a.driveMode != types.DriveModePilot {
+			log.Printf("Update channel 6 with value %v, new user_mode: %v", value, types.DriveModeUser)
+			a.driveMode = types.DriveModePilot
 		}
 	} else {
-		if a.driveMode != mode.DriveModeUser {
-			log.Printf("Update channel 6 with value %v, new user_mode: %v", value, mode.DriveModeUser)
+		if a.driveMode != types.DriveModeUser {
+			log.Printf("Update channel 6 with value %v, new user_mode: %v", value, types.DriveModeUser)
 		}
-		a.driveMode = mode.DriveModeUser
+		a.driveMode = types.DriveModeUser
 	}
 }
 
@@ -202,9 +202,9 @@ func (a *Part) publishLoop() {
 func (a *Part) publishValues(prefix string) {
 	a.mutex.Lock()
 	defer a.mutex.Unlock()
-	a.pub.Publish(prefix+"/throttle", mqttdevice.NewMqttValue(a.throttle))
-	a.pub.Publish(prefix+"/steering", mqttdevice.NewMqttValue(a.steering))
-	a.pub.Publish(prefix+"/drive_mode", mqttdevice.NewMqttValue(a.driveMode))
+	a.pub.Publish(prefix+"/throttle", mqttdevice.NewMqttValue(types.Throttle{Value: a.throttle, Confidence: 1.}))
+	a.pub.Publish(prefix+"/steering", mqttdevice.NewMqttValue(types.Steering{Value: a.steering, Confidence: 1.}))
+	a.pub.Publish(prefix+"/drive_mode", mqttdevice.NewMqttValue(types.ToString(a.driveMode)))
 	a.pub.Publish(prefix+"/switch_record", mqttdevice.NewMqttValue(a.ctrlRecord))
 	a.pub.Publish(prefix+"/distance_cm", mqttdevice.NewMqttValue(a.distanceCm))
 }
