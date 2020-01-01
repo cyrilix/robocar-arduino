@@ -2,11 +2,12 @@ package arduino
 
 import (
 	"bufio"
-	"github.com/cyrilix/robocar-base/mqttdevice"
-	"github.com/cyrilix/robocar-base/types"
+	"github.com/cyrilix/robocar-protobuf/go/events"
+	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/golang/protobuf/proto"
+	log "github.com/sirupsen/logrus"
 	"github.com/tarm/serial"
 	"io"
-	"log"
 	"regexp"
 	"strconv"
 	"strings"
@@ -27,26 +28,34 @@ var (
 )
 
 type Part struct {
-	pub          mqttdevice.Publisher
+	client       mqtt.Client
 	topicBase    string
 	pubFrequency float64
 	serial       io.Reader
 	mutex        sync.Mutex
-	steering     float64
-	throttle     float64
-	distanceCm   int
+	steering     float32
+	throttle     float32
 	ctrlRecord   bool
-	driveMode    types.DriveMode
+	driveMode    events.DriveMode
 	debug        bool
+	cancel       chan interface{}
 }
 
-func NewPart(name string, baud int, pub mqttdevice.Publisher, topicBase string, pubFrequency float64, debug bool) *Part {
+func NewPart(client mqtt.Client, name string, baud int, topicBase string, pubFrequency float64, debug bool) *Part {
 	c := &serial.Config{Name: name, Baud: baud}
 	s, err := serial.OpenPort(c)
 	if err != nil {
 		log.Panicf("unable to open serial port: %v", err)
 	}
-	return &Part{serial: s, pub: pub, topicBase: topicBase, pubFrequency: pubFrequency, driveMode: types.DriveModeInvalid, debug: debug}
+	return &Part{
+		client:       client,
+		serial:       s,
+		topicBase:    topicBase,
+		pubFrequency: pubFrequency,
+		driveMode:    events.DriveMode_INVALID,
+		debug:        debug,
+		cancel:       make(chan interface{}),
+	}
 }
 
 func (a *Part) Start() error {
@@ -80,11 +89,11 @@ func (a *Part) updateValues(values []string) {
 	a.processChannel4(values[4])
 	a.processChannel5(values[5])
 	a.processChannel6(values[6])
-	a.processDistanceCm(values[8])
 }
 
 func (a *Part) Stop() {
 	log.Printf("stop ArduinoPart")
+	close(a.cancel)
 	switch s := a.serial.(type) {
 	case io.ReadCloser:
 		if err := s.Close(); err != nil {
@@ -106,7 +115,7 @@ func (a *Part) processChannel1(v string) {
 	} else if value > MaxPwmAngle {
 		value = MaxPwmAngle
 	}
-	a.steering = ((float64(value)-MinPwmAngle)/(MaxPwmAngle-MinPwmAngle))*2.0 - 1.0
+	a.steering = ((float32(value)-MinPwmAngle)/(MaxPwmAngle-MinPwmAngle))*2.0 - 1.0
 }
 
 func (a *Part) processChannel2(v string) {
@@ -122,7 +131,7 @@ func (a *Part) processChannel2(v string) {
 	} else if value > MaxPwmThrottle {
 		value = MaxPwmThrottle
 	}
-	a.throttle = ((float64(value)-MinPwmThrottle)/(MaxPwmThrottle-MinPwmThrottle))*2.0 - 1.0
+	a.throttle = ((float32(value)-MinPwmThrottle)/(MaxPwmThrottle-MinPwmThrottle))*2.0 - 1.0
 }
 
 func (a *Part) processChannel3(v string) {
@@ -170,41 +179,93 @@ func (a *Part) processChannel6(v string) {
 		return
 	}
 	if value > 1800 {
-		if a.driveMode != types.DriveModePilot {
-			log.Printf("Update channel 6 with value %v, new user_mode: %v", value, types.DriveModeUser)
-			a.driveMode = types.DriveModePilot
+		if a.driveMode != events.DriveMode_PILOT {
+			log.Printf("Update channel 6 with value %v, new user_mode: %v", value, events.DriveMode_PILOT)
+			a.driveMode = events.DriveMode_PILOT
 		}
 	} else {
-		if a.driveMode != types.DriveModeUser {
-			log.Printf("Update channel 6 with value %v, new user_mode: %v", value, types.DriveModeUser)
+		if a.driveMode != events.DriveMode_USER {
+			log.Printf("Update channel 6 with value %v, new user_mode: %v", value, events.DriveMode_USER)
 		}
-		a.driveMode = types.DriveModeUser
+		a.driveMode = events.DriveMode_USER
 	}
-}
-
-func (a *Part) processDistanceCm(v string) {
-	value, err := strconv.Atoi(v)
-	if err != nil {
-		log.Printf("invalid value for distanceCm, should be an int: %v", err)
-		return
-	}
-	a.distanceCm = value
 }
 
 func (a *Part) publishLoop() {
 	prefix := strings.TrimSuffix(a.topicBase, "/")
+	ticker := time.NewTicker(time.Second / time.Duration(int(a.pubFrequency)))
+
 	for {
-		a.publishValues(prefix)
-		time.Sleep(time.Second / time.Duration(int(a.pubFrequency)))
+		select {
+		case <-ticker.C:
+			a.publishValues(prefix)
+		case <-a.cancel:
+			ticker.Stop()
+			return
+		}
 	}
 }
 
 func (a *Part) publishValues(prefix string) {
 	a.mutex.Lock()
 	defer a.mutex.Unlock()
-	a.pub.Publish(prefix+"/throttle", mqttdevice.NewMqttValue(types.Throttle{Value: a.throttle, Confidence: 1.}))
-	a.pub.Publish(prefix+"/steering", mqttdevice.NewMqttValue(types.Steering{Value: a.steering, Confidence: 1.}))
-	a.pub.Publish(prefix+"/drive_mode", mqttdevice.NewMqttValue(types.ToString(a.driveMode)))
-	a.pub.Publish(prefix+"/switch_record", mqttdevice.NewMqttValue(a.ctrlRecord))
-	a.pub.Publish(prefix+"/distance_cm", mqttdevice.NewMqttValue(a.distanceCm))
+
+	a.publishThrottle(prefix)
+	a.publishSteering(prefix)
+	a.publishDriveMode(prefix)
+	a.publishSwitchRecord(prefix)
+}
+
+func (a *Part) publishThrottle(prefix string) {
+	throttle := events.ThrottleMessage{
+		Throttle:   a.throttle,
+		Confidence: 1.0,
+	}
+	throttleMessage, err := proto.Marshal(&throttle)
+	if err != nil {
+		log.Errorf("unable to marshal protobuf throttle message: %v", err)
+		return
+	}
+	publish(a.client, prefix+"/throttle", &throttleMessage)
+}
+
+func (a *Part) publishSteering(prefix string) {
+	steering := events.SteeringMessage{
+		Steering:   a.steering,
+		Confidence: 1.0,
+	}
+	steeringMessage, err := proto.Marshal(&steering)
+	if err != nil {
+		log.Errorf("unable to marshal protobuf steering message: %v", err)
+		return
+	}
+	publish(a.client, prefix+"/steering", &steeringMessage)
+}
+
+func (a *Part) publishDriveMode(prefix string) {
+	dm := events.DriveModeMessage{
+		DriveMode: a.driveMode,
+	}
+	driveModeMessage, err := proto.Marshal(&dm)
+	if err != nil {
+		log.Errorf("unable to marshal protobuf driveMode message: %v", err)
+		return
+	}
+	publish(a.client, prefix+"/drive_mode", &driveModeMessage)
+}
+
+func (a *Part) publishSwitchRecord(prefix string) {
+	sr := events.SwitchRecordMessage{
+		Enabled: a.ctrlRecord,
+	}
+	switchRecordMessage, err := proto.Marshal(&sr)
+	if err != nil {
+		log.Errorf("unable to marshal protobuf SwitchRecord message: %v", err)
+		return
+	}
+	publish(a.client, prefix+"/switch_record", &switchRecordMessage)
+}
+
+var publish = func(client mqtt.Client, topic string, payload *[]byte) {
+	client.Publish(topic, 0, false, *payload)
 }

@@ -4,20 +4,11 @@ import (
 	"flag"
 	"github.com/cyrilix/robocar-arduino/arduino"
 	"github.com/cyrilix/robocar-base/cli"
-	"github.com/cyrilix/robocar-base/mqttdevice"
 	"log"
 	"os"
 )
 
 const DefaultClientId = "robocar-arduino"
-
-func setDefaultValueFromEnv(value *string, key string, defaultValue string) {
-	if os.Getenv(key) != "" {
-		*value = os.Getenv(key)
-	} else {
-		*value = defaultValue
-	}
-}
 
 func main() {
 	var mqttBroker, username, password, clientId, topicBase string
@@ -43,16 +34,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	pubSub := mqttdevice.NewPahoMqttPubSub(mqttBroker, username, password, clientId, mqttQos, mqttRetain)
-	defer func() {
-		err := pubSub.Close()
-		if err != nil {
-			log.Printf("unable to close pubsub: %v", err)
-		}
-	}()
+	client, err := cli.Connect(mqttBroker, username, password, clientId)
+	if err != nil{
+		log.Fatalf("unable to connect to mqtt broker: %v", err)
+	}
+	defer client.Disconnect(10)
 
-	a := arduino.NewPart(device, baud, pubSub, topicBase, pubFrequency, debug)
-	err := a.Start()
+	a := arduino.NewPart(client, device, baud, topicBase, pubFrequency, debug)
+	err = a.Start()
 	if err != nil {
 		log.Printf("unable to start service: %v", err)
 	}
