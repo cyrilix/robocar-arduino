@@ -192,7 +192,16 @@ func TestPublish(t *testing.T) {
 	defer conn.Close()
 
 	pubFrequency := 100.
-	a := Part{client: nil, serial: conn, pubFrequency: pubFrequency, topicBase: "car/part/arduino/", cancel:make(chan interface{})}
+	a := Part{
+		client: nil,
+		serial: conn,
+		pubFrequency: pubFrequency,
+		throttleTopic: "car/part/arduino/throttle",
+		steeringTopic: "car/part/arduino/steering",
+		driveModeTopic: "car/part/arduino/drive_mode",
+		switchRecordTopic: "car/part/arduino/switch_record",
+		cancel: make(chan interface{}),
+	}
 	go a.Start()
 	defer a.Stop()
 

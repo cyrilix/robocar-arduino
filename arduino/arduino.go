@@ -29,7 +29,7 @@ var (
 
 type Part struct {
 	client       mqtt.Client
-	topicBase    string
+	throttleTopic, steeringTopic, driveModeTopic, switchRecordTopic string
 	pubFrequency float64
 	serial       io.Reader
 	mutex        sync.Mutex
@@ -41,7 +41,7 @@ type Part struct {
 	cancel       chan interface{}
 }
 
-func NewPart(client mqtt.Client, name string, baud int, topicBase string, pubFrequency float64, debug bool) *Part {
+func NewPart(client mqtt.Client, name string, baud int, throttleTopic, steeringTopic, driveModeTopic, switchRecordTopic string, pubFrequency float64, debug bool) *Part {
 	c := &serial.Config{Name: name, Baud: baud}
 	s, err := serial.OpenPort(c)
 	if err != nil {
@@ -50,7 +50,10 @@ func NewPart(client mqtt.Client, name string, baud int, topicBase string, pubFre
 	return &Part{
 		client:       client,
 		serial:       s,
-		topicBase:    topicBase,
+		throttleTopic: throttleTopic,
+		steeringTopic: steeringTopic,
+		driveModeTopic:driveModeTopic,
+		switchRecordTopic:switchRecordTopic,
 		pubFrequency: pubFrequency,
 		driveMode:    events.DriveMode_INVALID,
 		debug:        debug,
@@ -192,13 +195,12 @@ func (a *Part) processChannel6(v string) {
 }
 
 func (a *Part) publishLoop() {
-	prefix := strings.TrimSuffix(a.topicBase, "/")
 	ticker := time.NewTicker(time.Second / time.Duration(int(a.pubFrequency)))
 
 	for {
 		select {
 		case <-ticker.C:
-			a.publishValues(prefix)
+			a.publishValues()
 		case <-a.cancel:
 			ticker.Stop()
 			return
@@ -206,17 +208,17 @@ func (a *Part) publishLoop() {
 	}
 }
 
-func (a *Part) publishValues(prefix string) {
+func (a *Part) publishValues() {
 	a.mutex.Lock()
 	defer a.mutex.Unlock()
 
-	a.publishThrottle(prefix)
-	a.publishSteering(prefix)
-	a.publishDriveMode(prefix)
-	a.publishSwitchRecord(prefix)
+	a.publishThrottle()
+	a.publishSteering()
+	a.publishDriveMode()
+	a.publishSwitchRecord()
 }
 
-func (a *Part) publishThrottle(prefix string) {
+func (a *Part) publishThrottle() {
 	throttle := events.ThrottleMessage{
 		Throttle:   a.throttle,
 		Confidence: 1.0,
@@ -226,10 +228,11 @@ func (a *Part) publishThrottle(prefix string) {
 		log.Errorf("unable to marshal protobuf throttle message: %v", err)
 		return
 	}
-	publish(a.client, prefix+"/throttle", &throttleMessage)
+	log.Infof("throttle channel: %v", a.throttle)
+	publish(a.client, a.throttleTopic, &throttleMessage)
 }
 
-func (a *Part) publishSteering(prefix string) {
+func (a *Part) publishSteering() {
 	steering := events.SteeringMessage{
 		Steering:   a.steering,
 		Confidence: 1.0,
@@ -239,10 +242,10 @@ func (a *Part) publishSteering(prefix string) {
 		log.Errorf("unable to marshal protobuf steering message: %v", err)
 		return
 	}
-	publish(a.client, prefix+"/steering", &steeringMessage)
+	publish(a.client, a.steeringTopic, &steeringMessage)
 }
 
-func (a *Part) publishDriveMode(prefix string) {
+func (a *Part) publishDriveMode() {
 	dm := events.DriveModeMessage{
 		DriveMode: a.driveMode,
 	}
@@ -251,10 +254,10 @@ func (a *Part) publishDriveMode(prefix string) {
 		log.Errorf("unable to marshal protobuf driveMode message: %v", err)
 		return
 	}
-	publish(a.client, prefix+"/drive_mode", &driveModeMessage)
+	publish(a.client, a.driveModeTopic, &driveModeMessage)
 }
 
-func (a *Part) publishSwitchRecord(prefix string) {
+func (a *Part) publishSwitchRecord() {
 	sr := events.SwitchRecordMessage{
 		Enabled: a.ctrlRecord,
 	}
@@ -263,7 +266,7 @@ func (a *Part) publishSwitchRecord(prefix string) {
 		log.Errorf("unable to marshal protobuf SwitchRecord message: %v", err)
 		return
 	}
-	publish(a.client, prefix+"/switch_record", &switchRecordMessage)
+	publish(a.client, a.switchRecordTopic, &switchRecordMessage)
 }
 
 var publish = func(client mqtt.Client, topic string, payload *[]byte) {
