@@ -28,36 +28,34 @@ var (
 )
 
 type Part struct {
-	client       mqtt.Client
+	client                                                          mqtt.Client
 	throttleTopic, steeringTopic, driveModeTopic, switchRecordTopic string
-	pubFrequency float64
-	serial       io.Reader
-	mutex        sync.Mutex
-	steering     float32
-	throttle     float32
-	ctrlRecord   bool
-	driveMode    events.DriveMode
-	debug        bool
-	cancel       chan interface{}
+	pubFrequency                                                    float64
+	serial                                                          io.Reader
+	mutex                                                           sync.Mutex
+	steering                                                        float32
+	throttle                                                        float32
+	ctrlRecord                                                      bool
+	driveMode                                                       events.DriveMode
+	cancel                                                          chan interface{}
 }
 
-func NewPart(client mqtt.Client, name string, baud int, throttleTopic, steeringTopic, driveModeTopic, switchRecordTopic string, pubFrequency float64, debug bool) *Part {
+func NewPart(client mqtt.Client, name string, baud int, throttleTopic, steeringTopic, driveModeTopic, switchRecordTopic string, pubFrequency float64) *Part {
 	c := &serial.Config{Name: name, Baud: baud}
 	s, err := serial.OpenPort(c)
 	if err != nil {
 		log.Panicf("unable to open serial port: %v", err)
 	}
 	return &Part{
-		client:       client,
-		serial:       s,
-		throttleTopic: throttleTopic,
-		steeringTopic: steeringTopic,
-		driveModeTopic:driveModeTopic,
-		switchRecordTopic:switchRecordTopic,
-		pubFrequency: pubFrequency,
-		driveMode:    events.DriveMode_INVALID,
-		debug:        debug,
-		cancel:       make(chan interface{}),
+		client:            client,
+		serial:            s,
+		throttleTopic:     throttleTopic,
+		steeringTopic:     steeringTopic,
+		driveModeTopic:    driveModeTopic,
+		switchRecordTopic: switchRecordTopic,
+		pubFrequency:      pubFrequency,
+		driveMode:         events.DriveMode_INVALID,
+		cancel:            make(chan interface{}),
 	}
 }
 
@@ -106,9 +104,7 @@ func (a *Part) Stop() {
 }
 
 func (a *Part) processChannel1(v string) {
-	if a.debug {
-		log.Printf("channel1: %v", v)
-	}
+	log.Debugf("channel1: %v", v)
 	value, err := strconv.Atoi(v)
 	if err != nil {
 		log.Printf("invalid value for channel1, should be an int: %v", err)
@@ -122,9 +118,7 @@ func (a *Part) processChannel1(v string) {
 }
 
 func (a *Part) processChannel2(v string) {
-	if a.debug {
-		log.Printf("channel2: %v", v)
-	}
+	log.Debugf("channel2: %v", v)
 	value, err := strconv.Atoi(v)
 	if err != nil {
 		log.Printf("invalid value for channel2, should be an int: %v", err)
@@ -138,57 +132,49 @@ func (a *Part) processChannel2(v string) {
 }
 
 func (a *Part) processChannel3(v string) {
-	if a.debug {
-		log.Printf("channel3: %v", v)
-	}
+	log.Debugf("channel3: %v", v)
 }
 
 func (a *Part) processChannel4(v string) {
-	if a.debug {
-		log.Printf("channel4: %v", v)
-	}
+	log.Debugf("channel4: %v", v)
 }
 
 func (a *Part) processChannel5(v string) {
-	if a.debug {
-		log.Printf("channel5: %v", v)
-	}
+	log.Debugf("channel5: %v", v)
 
 	value, err := strconv.Atoi(v)
 	if err != nil {
-		log.Printf("invalid value for channel5, should be an int: %v", err)
+		log.Errorf("invalid value for channel5, should be an int: %v", err)
 	}
 
 	if value < 1800 {
 		if !a.ctrlRecord {
-			log.Printf("Update channel 5 with value %v, record: %v", true, false)
+			log.Infof("Update channel 5 with value %v, record: %v", true, false)
 			a.ctrlRecord = true
 		}
 	} else {
 		if a.ctrlRecord {
-			log.Printf("Update channel 5 with value %v, record: %v", false, true)
+			log.Infof("Update channel 5 with value %v, record: %v", false, true)
 			a.ctrlRecord = false
 		}
 	}
 }
 
 func (a *Part) processChannel6(v string) {
-	if a.debug {
-		log.Printf("channel6: %v", v)
-	}
+	log.Debugf("channel6: %v", v)
 	value, err := strconv.Atoi(v)
 	if err != nil {
-		log.Printf("invalid value for channel6, should be an int: %v", err)
+		log.Errorf("invalid value for channel6, should be an int: %v", err)
 		return
 	}
 	if value > 1800 {
 		if a.driveMode != events.DriveMode_PILOT {
-			log.Printf("Update channel 6 with value %v, new user_mode: %v", value, events.DriveMode_PILOT)
+			log.Infof("Update channel 6 with value %v, new user_mode: %v", value, events.DriveMode_PILOT)
 			a.driveMode = events.DriveMode_PILOT
 		}
 	} else {
 		if a.driveMode != events.DriveMode_USER {
-			log.Printf("Update channel 6 with value %v, new user_mode: %v", value, events.DriveMode_USER)
+			log.Infof("Update channel 6 with value %v, new user_mode: %v", value, events.DriveMode_USER)
 		}
 		a.driveMode = events.DriveMode_USER
 	}

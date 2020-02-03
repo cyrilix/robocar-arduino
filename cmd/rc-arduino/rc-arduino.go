@@ -4,7 +4,7 @@ import (
 	"flag"
 	"github.com/cyrilix/robocar-arduino/arduino"
 	"github.com/cyrilix/robocar-base/cli"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"os"
 )
 
@@ -38,13 +38,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	if debug {
+		log.SetLevel(log.DebugLevel)
+	}
+
 	client, err := cli.Connect(mqttBroker, username, password, clientId)
 	if err != nil {
 		log.Fatalf("unable to connect to mqtt broker: %v", err)
 	}
 	defer client.Disconnect(10)
 
-	a := arduino.NewPart(client, device, baud, throttleTopic, steeringTopic, driveModeTopic, switchRecordTopic, pubFrequency, debug)
+	a := arduino.NewPart(client, device, baud, throttleTopic, steeringTopic, driveModeTopic, switchRecordTopic, pubFrequency)
 	err = a.Start()
 	if err != nil {
 		log.Printf("unable to start service: %v", err)
