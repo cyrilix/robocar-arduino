@@ -107,7 +107,7 @@ func (a *Part) processChannel1(v string) {
 	log.Debugf("channel1: %v", v)
 	value, err := strconv.Atoi(v)
 	if err != nil {
-		log.Printf("invalid value for channel1, should be an int: %v", err)
+		log.Errorf("invalid value for channel1, should be an int: %v", err)
 	}
 	if value < MinPwmAngle {
 		value = MinPwmAngle
@@ -214,7 +214,7 @@ func (a *Part) publishThrottle() {
 		log.Errorf("unable to marshal protobuf throttle message: %v", err)
 		return
 	}
-	log.Infof("throttle channel: %v", a.throttle)
+	log.Debugf("throttle channel: %v", a.throttle)
 	publish(a.client, a.throttleTopic, &throttleMessage)
 }
 
@@ -228,6 +228,7 @@ func (a *Part) publishSteering() {
 		log.Errorf("unable to marshal protobuf steering message: %v", err)
 		return
 	}
+	log.Debugf("steering channel: %v", a.steering)
 	publish(a.client, a.steeringTopic, &steeringMessage)
 }
 
