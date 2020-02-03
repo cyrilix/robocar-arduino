@@ -246,7 +246,7 @@ func (a *Part) publishDriveMode() {
 
 func (a *Part) publishSwitchRecord() {
 	sr := events.SwitchRecordMessage{
-		Enabled: a.ctrlRecord,
+		Enabled: !a.ctrlRecord,
 	}
 	switchRecordMessage, err := proto.Marshal(&sr)
 	if err != nil {

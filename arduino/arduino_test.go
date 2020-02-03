@@ -214,19 +214,19 @@ func TestPublish(t *testing.T) {
 		expectedDriveMode    events.DriveModeMessage
 		expectedSwitchRecord events.SwitchRecordMessage
 	}{
-		{-1, 1, events.DriveMode_USER, false,
+		{-1, 1, events.DriveMode_USER, true,
 			events.ThrottleMessage{Throttle: -1., Confidence: 1.},
 			events.SteeringMessage{Steering: 1.0, Confidence: 1.},
 			events.DriveModeMessage{DriveMode: events.DriveMode_USER},
 			events.SwitchRecordMessage{Enabled: false},
 		},
-		{0, 0, events.DriveMode_PILOT, true,
+		{0, 0, events.DriveMode_PILOT, false,
 			events.ThrottleMessage{Throttle: 0., Confidence: 1.},
 			events.SteeringMessage{Steering: 0., Confidence: 1.},
 			events.DriveModeMessage{DriveMode: events.DriveMode_PILOT},
 			events.SwitchRecordMessage{Enabled: true},
 		},
-		{0.87, -0.58, events.DriveMode_PILOT, true,
+		{0.87, -0.58, events.DriveMode_PILOT, false,
 			events.ThrottleMessage{Throttle: 0.87, Confidence: 1.},
 			events.SteeringMessage{Steering: -0.58, Confidence: 1.},
 			events.DriveModeMessage{DriveMode: events.DriveMode_PILOT},
