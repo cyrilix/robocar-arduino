@@ -1,6 +1,6 @@
 module github.com/cyrilix/robocar-arduino
 
-go 1.13
+go 1.14
 
 require (
 	github.com/cyrilix/robocar-base v0.1.0
