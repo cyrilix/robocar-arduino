@@ -4,7 +4,9 @@ import (
 	"flag"
 	"github.com/cyrilix/robocar-arduino/arduino"
 	"github.com/cyrilix/robocar-base/cli"
-	log "github.com/sirupsen/logrus"
+	"go.uber.org/zap"
+	"log"
+
 	"os"
 )
 
@@ -38,19 +40,32 @@ func main() {
 		os.Exit(1)
 	}
 
+	config := zap.NewDevelopmentConfig()
 	if debug {
-		log.SetLevel(log.DebugLevel)
+		config.Level = zap.NewAtomicLevelAt(zap.DebugLevel)
+	} else {
+		config.Level = zap.NewAtomicLevelAt(zap.InfoLevel)
 	}
+	lgr, err := config.Build()
+	if err != nil {
+		log.Fatalf("unable to init logger: %v", err)
+	}
+	defer func() {
+		if err := lgr.Sync(); err != nil {
+		log.Printf("unable to Sync logger: %v\n", err)
+		}
+	}()
+	zap.ReplaceGlobals(lgr)
 
 	client, err := cli.Connect(mqttBroker, username, password, clientId)
 	if err != nil {
-		log.Fatalf("unable to connect to mqtt broker: %v", err)
+		zap.S().Fatalf("unable to connect to mqtt broker: %v", err)
 	}
 	defer client.Disconnect(10)
 
 	a := arduino.NewPart(client, device, baud, throttleTopic, steeringTopic, driveModeTopic, switchRecordTopic, pubFrequency)
 	err = a.Start()
 	if err != nil {
-		log.Printf("unable to start service: %v", err)
+		zap.S().Errorw("unable to start service", "error", err)
 	}
 }

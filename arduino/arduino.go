@@ -5,9 +5,10 @@ import (
 	"github.com/cyrilix/robocar-protobuf/go/events"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/golang/protobuf/proto"
-	log "github.com/sirupsen/logrus"
 	"github.com/tarm/serial"
+	"go.uber.org/zap"
 	"io"
+	"log"
 	"regexp"
 	"strconv"
 	"strings"
@@ -44,7 +45,7 @@ func NewPart(client mqtt.Client, name string, baud int, throttleTopic, steeringT
 	c := &serial.Config{Name: name, Baud: baud}
 	s, err := serial.OpenPort(c)
 	if err != nil {
-		log.Panicf("unable to open serial port: %v", err)
+		zap.S().Panicw("unable to open serial port: %v", err)
 	}
 	return &Part{
 		client:            client,
@@ -104,10 +105,10 @@ func (a *Part) Stop() {
 }
 
 func (a *Part) processChannel1(v string) {
-	log.Debugf("channel1: %v", v)
+	zap.L().Debug("process new value for channel1", zap.String("value", v))
 	value, err := strconv.Atoi(v)
 	if err != nil {
-		log.Errorf("invalid value for channel1, should be an int: %v", err)
+		zap.S().Errorf("invalid value for channel1, should be an int: %v", err)
 	}
 	if value < MinPwmAngle {
 		value = MinPwmAngle
@@ -118,10 +119,10 @@ func (a *Part) processChannel1(v string) {
 }
 
 func (a *Part) processChannel2(v string) {
-	log.Debugf("channel2: %v", v)
+	zap.L().Debug("process new value for channel2", zap.String("value", v))
 	value, err := strconv.Atoi(v)
 	if err != nil {
-		log.Printf("invalid value for channel2, should be an int: %v", err)
+		zap.S().Errorf("invalid value for channel2, should be an int: %v", err)
 	}
 	if value < MinPwmThrottle {
 		value = MinPwmThrottle
@@ -132,49 +133,49 @@ func (a *Part) processChannel2(v string) {
 }
 
 func (a *Part) processChannel3(v string) {
-	log.Debugf("channel3: %v", v)
+	zap.L().Debug("process new value for channel3", zap.String("value", v))
 }
 
 func (a *Part) processChannel4(v string) {
-	log.Debugf("channel4: %v", v)
+	zap.L().Debug("process new value for channel4", zap.String("value", v))
 }
 
 func (a *Part) processChannel5(v string) {
-	log.Debugf("channel5: %v", v)
+	zap.L().Debug("process new value for channel5", zap.String("value", v))
 
 	value, err := strconv.Atoi(v)
 	if err != nil {
-		log.Errorf("invalid value for channel5, should be an int: %v", err)
+		zap.S().Errorf("invalid value for channel5, should be an int: %v", err)
 	}
 
 	if value < 1800 {
 		if !a.ctrlRecord {
-			log.Infof("Update channel 5 with value %v, record: %v", true, false)
+			zap.S().Infof("Update channel 5 with value %v, record: %v", true, false)
 			a.ctrlRecord = true
 		}
 	} else {
 		if a.ctrlRecord {
-			log.Infof("Update channel 5 with value %v, record: %v", false, true)
+			zap.S().Infof("Update channel 5 with value %v, record: %v", false, true)
 			a.ctrlRecord = false
 		}
 	}
 }
 
 func (a *Part) processChannel6(v string) {
-	log.Debugf("channel6: %v", v)
+	zap.L().Debug("process new value for channel6", zap.String("value", v))
 	value, err := strconv.Atoi(v)
 	if err != nil {
-		log.Errorf("invalid value for channel6, should be an int: %v", err)
+		zap.S().Errorf("invalid value for channel6, should be an int: %v", err)
 		return
 	}
 	if value > 1800 {
 		if a.driveMode != events.DriveMode_PILOT {
-			log.Infof("Update channel 6 with value %v, new user_mode: %v", value, events.DriveMode_PILOT)
+			zap.S().Infof("Update channel 6 with value %v, new user_mode: %v", value, events.DriveMode_PILOT)
 			a.driveMode = events.DriveMode_PILOT
 		}
 	} else {
 		if a.driveMode != events.DriveMode_USER {
-			log.Infof("Update channel 6 with value %v, new user_mode: %v", value, events.DriveMode_USER)
+			zap.S().Infof("Update channel 6 with value %v, new user_mode: %v", value, events.DriveMode_USER)
 		}
 		a.driveMode = events.DriveMode_USER
 	}
@@ -211,10 +212,10 @@ func (a *Part) publishThrottle() {
 	}
 	throttleMessage, err := proto.Marshal(&throttle)
 	if err != nil {
-		log.Errorf("unable to marshal protobuf throttle message: %v", err)
+		zap.S().Errorf("unable to marshal protobuf throttle message: %v", err)
 		return
 	}
-	log.Debugf("throttle channel: %v", a.throttle)
+	zap.L().Debug("throttle channel", zap.Float32("throttle", a.throttle))
 	publish(a.client, a.throttleTopic, &throttleMessage)
 }
 
@@ -225,10 +226,10 @@ func (a *Part) publishSteering() {
 	}
 	steeringMessage, err := proto.Marshal(&steering)
 	if err != nil {
-		log.Errorf("unable to marshal protobuf steering message: %v", err)
+		zap.S().Errorf("unable to marshal protobuf steering message: %v", err)
 		return
 	}
-	log.Debugf("steering channel: %v", a.steering)
+	zap.L().Debug("steering channel", zap.Float32("steering", a.steering))
 	publish(a.client, a.steeringTopic, &steeringMessage)
 }
 
@@ -238,7 +239,7 @@ func (a *Part) publishDriveMode() {
 	}
 	driveModeMessage, err := proto.Marshal(&dm)
 	if err != nil {
-		log.Errorf("unable to marshal protobuf driveMode message: %v", err)
+		zap.S().Errorf("unable to marshal protobuf driveMode message: %v", err)
 		return
 	}
 	publish(a.client, a.driveModeTopic, &driveModeMessage)
@@ -250,7 +251,7 @@ func (a *Part) publishSwitchRecord() {
 	}
 	switchRecordMessage, err := proto.Marshal(&sr)
 	if err != nil {
-		log.Errorf("unable to marshal protobuf SwitchRecord message: %v", err)
+		zap.S().Errorf("unable to marshal protobuf SwitchRecord message: %v", err)
 		return
 	}
 	publish(a.client, a.switchRecordTopic, &switchRecordMessage)
