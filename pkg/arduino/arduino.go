@@ -8,7 +8,6 @@ import (
 	"github.com/tarm/serial"
 	"go.uber.org/zap"
 	"io"
-	"log"
 	"regexp"
 	"strconv"
 	"strings"
@@ -61,18 +60,18 @@ func NewPart(client mqtt.Client, name string, baud int, throttleTopic, steeringT
 }
 
 func (a *Part) Start() error {
-	log.Printf("start arduino part")
+	zap.S().Info("start arduino part")
 	go a.publishLoop()
 	for {
 		buff := bufio.NewReader(a.serial)
 		line, err := buff.ReadString('\n')
 		if err == io.EOF || line == "" {
-			log.Println("remote connection closed")
+			zap.S().Error("remote connection closed")
 			break
 		}
 
 		if !serialLineRegex.MatchString(line) {
-			log.Printf("invalid line: '%v'", line)
+			zap.S().Errorf("invalid line: '%v'", line)
 			continue
 		}
 		values := strings.Split(strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r"), ",")
@@ -94,12 +93,12 @@ func (a *Part) updateValues(values []string) {
 }
 
 func (a *Part) Stop() {
-	log.Printf("stop ArduinoPart")
+	zap.S().Info("stop ArduinoPart")
 	close(a.cancel)
 	switch s := a.serial.(type) {
 	case io.ReadCloser:
 		if err := s.Close(); err != nil {
-			log.Fatalf("unable to close serial port: %v", err)
+			zap.S().Fatalf("unable to close serial port: %v", err)
 		}
 	}
 }

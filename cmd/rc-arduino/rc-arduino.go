@@ -2,7 +2,7 @@ package main
 
 import (
 	"flag"
-	"github.com/cyrilix/robocar-arduino/arduino"
+	"github.com/cyrilix/robocar-arduino/pkg/arduino"
 	"github.com/cyrilix/robocar-base/cli"
 	"go.uber.org/zap"
 	"log"
