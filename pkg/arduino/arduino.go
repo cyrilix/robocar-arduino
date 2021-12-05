@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	MinPwmAngle = 960.0
-	MaxPwmAngle = 1980.0
+	MinPwmAngle = 999.0
+	MaxPwmAngle = 1985.0
 
 	MinPwmThrottle = 972.0
 	MaxPwmThrottle = 1954.0
