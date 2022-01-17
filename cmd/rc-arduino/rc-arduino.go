@@ -27,7 +27,6 @@ func main() {
 	var device string
 	var baud int
 	var pubFrequency float64
-	var debug bool
 
 	mqttQos := cli.InitIntFlag("MQTT_QOS", 0)
 	_, mqttRetain := os.LookupEnv("MQTT_RETAIN")
@@ -55,20 +54,17 @@ func main() {
 	flag.IntVar(&steeringLeftPWM, "steering-left-pwm", steeringLeftPWM, "Right left value for steering PWM, STEERING_LEFT_PWM env if args not set")
 	flag.IntVar(&steeringRightPWM, "steering-right-pwm", steeringRightPWM, "Right right value for steering PWM, STEERING_RIGHT_PWM env if args not set")
 	flag.IntVar(&steeringCenterPWM, "steering-center-pwm", steeringCenterPWM, "Center value for steering PWM, STEERING_CENTER_PWM env if args not set")
-	flag.BoolVar(&debug, "debug", false, "Display raw value to debug")
 
+	logLevel := zap.LevelFlag("log", zap.InfoLevel, "log level")
 	flag.Parse()
+
 	if len(os.Args) <= 1 {
 		flag.PrintDefaults()
 		os.Exit(1)
 	}
 
 	config := zap.NewDevelopmentConfig()
-	if debug {
-		config.Level = zap.NewAtomicLevelAt(zap.DebugLevel)
-	} else {
-		config.Level = zap.NewAtomicLevelAt(zap.InfoLevel)
-	}
+	config.Level = zap.NewAtomicLevelAt(*logLevel)
 	lgr, err := config.Build()
 	if err != nil {
 		log.Fatalf("unable to init logger: %v", err)
