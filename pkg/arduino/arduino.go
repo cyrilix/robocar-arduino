@@ -16,9 +16,6 @@ import (
 )
 
 const (
-	MinPwmAngle = 999.0
-	MaxPwmAngle = 1985.0
-
 	MinPwmThrottle = 972.0
 	MaxPwmThrottle = 1954.0
 )
@@ -38,9 +35,31 @@ type Part struct {
 	ctrlRecord                                                      bool
 	driveMode                                                       events.DriveMode
 	cancel                                                          chan interface{}
+
+	pwmSteeringConfig PWMSteeringConfig
 }
 
-func NewPart(client mqtt.Client, name string, baud int, throttleTopic, steeringTopic, driveModeTopic, switchRecordTopic string, pubFrequency float64) *Part {
+type PWMSteeringConfig struct {
+	Left   int
+	Right  int
+	Center int
+}
+
+func NewPWMSteeringConfig(min, max int) PWMSteeringConfig {
+	return PWMSteeringConfig{
+		Left:   min,
+		Right:  max,
+		Center: min + (max-min)/2,
+	}
+}
+func NewAsymetricPWMSteeringConfig(min, max, middle int) PWMSteeringConfig {
+	c := NewPWMSteeringConfig(min, max)
+	c.Center = middle
+	return c
+}
+
+func NewPart(client mqtt.Client, name string, baud int, throttleTopic, steeringTopic, driveModeTopic,
+	switchRecordTopic string, pubFrequency float64, steeringConfig PWMSteeringConfig) *Part {
 	c := &serial.Config{Name: name, Baud: baud}
 	s, err := serial.OpenPort(c)
 	if err != nil {
@@ -56,6 +75,8 @@ func NewPart(client mqtt.Client, name string, baud int, throttleTopic, steeringT
 		pubFrequency:      pubFrequency,
 		driveMode:         events.DriveMode_INVALID,
 		cancel:            make(chan interface{}),
+
+		pwmSteeringConfig: steeringConfig,
 	}
 }
 
@@ -109,12 +130,23 @@ func (a *Part) processChannel1(v string) {
 	if err != nil {
 		zap.S().Errorf("invalid value for channel1, should be an int: %v", err)
 	}
-	if value < MinPwmAngle {
-		value = MinPwmAngle
-	} else if value > MaxPwmAngle {
-		value = MaxPwmAngle
+	a.steering = convertPwmSteeringToPercent(value, a.pwmSteeringConfig.Left, a.pwmSteeringConfig.Right, a.pwmSteeringConfig.Center)
+}
+
+func convertPwmSteeringToPercent(value int, minPwm int, maxPwm int, middlePwm int) float32 {
+	if value < minPwm {
+		value = minPwm
+	} else if value > maxPwm {
+		value = maxPwm
 	}
-	a.steering = ((float32(value)-MinPwmAngle)/(MaxPwmAngle-MinPwmAngle))*2.0 - 1.0
+	if value == middlePwm {
+		return 0.
+	}
+	if value < middlePwm {
+		return (float32(value) - float32(middlePwm)) / float32(middlePwm-minPwm)
+	}
+	//  middle < value < max
+	return (float32(value) - float32(middlePwm)) / float32(maxPwm-middlePwm)
 }
 
 func (a *Part) processChannel2(v string) {

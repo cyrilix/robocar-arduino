@@ -6,10 +6,20 @@ import (
 	"github.com/cyrilix/robocar-protobuf/go/events"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"google.golang.org/protobuf/proto"
+	"math"
 	"net"
 	"sync"
 	"testing"
 	"time"
+)
+
+const (
+	MinPwmAngle = 999.0
+	MaxPwmAngle = 1985.0
+)
+
+var (
+	MiddlePwmAngle = int((MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle)
 )
 
 func TestArduinoPart_Update(t *testing.T) {
@@ -48,7 +58,7 @@ func TestArduinoPart_Update(t *testing.T) {
 		}
 	}()
 
-	a := Part{client: nil, serial: conn, pubFrequency: 100}
+	a := Part{client: nil, serial: conn, pubFrequency: 100, pwmSteeringConfig: NewAsymetricPWMSteeringConfig(MinPwmAngle, MaxPwmAngle, MiddlePwmAngle)}
 	go func() {
 		err := a.Start()
 		if err != nil {
@@ -103,14 +113,14 @@ func TestArduinoPart_Update(t *testing.T) {
 			fmt.Sprintf("12395,%d,%d,%d,%d,%d,%d,50,%d\n", 99, channel2, channel3, channel4, channel5, channel6, distanceCm),
 			-1., -1., events.DriveMode_USER, false},
 		{"Sterring: left",
-			fmt.Sprintf("12400,%d,%d,%d,%d,%d,%d,50,%d\n", 998, channel2, channel3, channel4, channel5, channel6, distanceCm),
-			-1., -0.93, events.DriveMode_USER, false},
+			fmt.Sprintf("12400,%d,%d,%d,%d,%d,%d,50,%d\n", int(MinPwmAngle+40), channel2, channel3, channel4, channel5, channel6, distanceCm),
+			-1., -0.92, events.DriveMode_USER, false},
 		{"Sterring: middle",
 			fmt.Sprintf("12405,%d,%d,%d,%d,%d,%d,50,%d\n", 1450, channel2, channel3, channel4, channel5, channel6, distanceCm),
-			-1., -0.04, events.DriveMode_USER, false},
+			-1., -0.09, events.DriveMode_USER, false},
 		{"Sterring: right",
 			fmt.Sprintf("12410,%d,%d,%d,%d,%d,%d,50,%d\n", 1958, channel2, channel3, channel4, channel5, channel6, distanceCm),
-			-1., 0.96, events.DriveMode_USER, false},
+			-1., 0.95, events.DriveMode_USER, false},
 		{"Sterring: over right",
 			fmt.Sprintf("12415,%d,%d,%d,%d,%d,%d,50,%d\n", 2998, channel2, channel3, channel4, channel5, channel6, distanceCm),
 			-1., 1., events.DriveMode_USER, false},
@@ -283,5 +293,147 @@ func unmarshalMsg(t *testing.T, payload []byte, msg proto.Message) {
 	err := proto.Unmarshal(payload, msg)
 	if err != nil {
 		t.Errorf("unable to unmarshal protobuf content to %T: %v", msg, err)
+	}
+}
+
+func Test_convertPwmSteeringToPercent(t *testing.T) {
+	type args struct {
+		value  int
+		middle int
+		min    int
+		max    int
+	}
+	tests := []struct {
+		name string
+		args args
+		want float32
+	}{
+		{
+			name: "middle",
+			args: args{
+				value:  (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle,
+				middle: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle,
+				min:    MinPwmAngle,
+				max:    MaxPwmAngle,
+			},
+			want: 0.,
+		},
+		{
+			name: "left",
+			args: args{
+				value:  MinPwmAngle,
+				middle: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle,
+				min:    MinPwmAngle,
+				max:    MaxPwmAngle,
+			},
+			want: -1.,
+		},
+		{
+			name: "mid-left",
+			args: args{
+				value:  int(math.Round((MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle - (MaxPwmAngle-MinPwmAngle)/4)),
+				middle: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle,
+				min:    MinPwmAngle,
+				max:    MaxPwmAngle,
+			},
+			want: -0.4989858,
+		},
+		{
+			name: "over left",
+			args: args{
+				value:  MinPwmAngle - 100,
+				middle: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle,
+				min:    MinPwmAngle,
+				max:    MaxPwmAngle,
+			},
+			want: -1.,
+		},
+		{
+			name: "right",
+			args: args{
+				value:  MaxPwmAngle,
+				middle: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle,
+				min:    MinPwmAngle,
+				max:    MaxPwmAngle,
+			},
+			want: 1.,
+		},
+		{
+			name: "mid-right",
+			args: args{
+				value:  int(math.Round((MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle + (MaxPwmAngle-MinPwmAngle)/4)),
+				middle: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle,
+				min:    MinPwmAngle,
+				max:    MaxPwmAngle,
+			},
+			want: 0.5010142,
+		},
+		{
+			name: "over right",
+			args: args{
+				value:  MaxPwmAngle + 100,
+				middle: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle,
+				min:    MinPwmAngle,
+				max:    MaxPwmAngle,
+			},
+			want: 1.,
+		},
+		{
+			name: "asymetric middle",
+			args: args{
+				value:  (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle + 100,
+				middle: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle + 100,
+				min:    MinPwmAngle,
+				max:    MaxPwmAngle,
+			},
+			want: 0.,
+		},
+		{
+			name: "asymetric mid-left",
+			args: args{
+				value:  int(math.Round(((MaxPwmAngle-MinPwmAngle)/2+MinPwmAngle+100-MinPwmAngle)/2) + MinPwmAngle),
+				middle: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle + 100,
+				min:    MinPwmAngle,
+				max:    MaxPwmAngle,
+			},
+			want: -0.49915683,
+		},
+		{
+			name: "asymetric left",
+			args: args{
+				value:  MinPwmAngle,
+				middle: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle + 100,
+				min:    MinPwmAngle,
+				max:    MaxPwmAngle,
+			},
+			want: -1.,
+		},
+		{
+			name: "asymetric mid-right",
+			args: args{
+				value:  int(math.Round((MaxPwmAngle - (MaxPwmAngle-((MaxPwmAngle-MinPwmAngle)/2+MinPwmAngle+100))/2))),
+				middle: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle + 100,
+				min:    MinPwmAngle,
+				max:    MaxPwmAngle,
+			},
+			want: 0.50127226,
+		},
+		{
+			name: "asymetric right",
+			args: args{
+				value:  MaxPwmAngle,
+				middle: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle + 100,
+				min:    MinPwmAngle,
+				max:    MaxPwmAngle,
+			},
+			want: 1.,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := convertPwmSteeringToPercent(tt.args.value, tt.args.min, tt.args.max, tt.args.middle); got != tt.want {
+				t.Errorf("convertPwmSteeringToPercent() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
