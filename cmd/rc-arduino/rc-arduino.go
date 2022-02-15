@@ -6,8 +6,6 @@ import (
 	"github.com/cyrilix/robocar-base/cli"
 	"go.uber.org/zap"
 	"log"
-	"os/signal"
-	"syscall"
 
 	"os"
 )
@@ -72,7 +70,9 @@ func main() {
 		log.Fatalf("unable to init logger: %v", err)
 	}
 	defer func() {
-		_ = lgr.Sync()
+		if err := lgr.Sync(); err != nil {
+			log.Printf("unable to Sync logger: %v\n", err)
+		}
 	}()
 	zap.ReplaceGlobals(lgr)
 
@@ -80,24 +80,12 @@ func main() {
 	if err != nil {
 		zap.S().Fatalf("unable to connect to mqtt broker: %v", err)
 	}
-	defer func() {
-		zap.S().Infof("disconnect mqtt connection")
-		client.Disconnect(10)
-	}()
+	defer client.Disconnect(10)
 
 	sc := arduino.NewAsymetricPWMSteeringConfig(steeringLeftPWM, steeringRightPWM, steeringCenterPWM)
 	a := arduino.NewPart(client, device, baud, throttleTopic, steeringTopic, driveModeTopic, switchRecordTopic, pubFrequency, sc)
-
-	go func() {
-		err = a.Start()
-		if err != nil {
-			zap.S().Panicw("unable to start service", "error", err)
-		}
-	}()
-	defer a.Stop()
-
-	exitChan := make(chan os.Signal)
-	signal.Notify(exitChan, syscall.SIGTERM)
-	<-exitChan
-	zap.S().Info("exit on sigterm")
+	err = a.Start()
+	if err != nil {
+		zap.S().Errorw("unable to start service", "error", err)
+	}
 }
