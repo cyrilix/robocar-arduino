@@ -91,6 +91,7 @@ func (a *Part) Start() error {
 			break
 		}
 
+		zap.L().Debug("raw line: %s", zap.String("raw", line))
 		if !serialLineRegex.MatchString(line) {
 			zap.S().Errorf("invalid line: '%v'", line)
 			continue
