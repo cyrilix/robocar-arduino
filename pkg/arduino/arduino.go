@@ -126,10 +126,10 @@ func (a *Part) Stop() {
 }
 
 func (a *Part) processChannel1(v string) {
-	zap.L().Debug("process new value for channel1", zap.String("value", v))
+	zap.L().Debug("process new value for steering on channel1", zap.String("value", v))
 	value, err := strconv.Atoi(v)
 	if err != nil {
-		zap.S().Errorf("invalid value for channel1, should be an int: %v", err)
+		zap.S().Errorf("invalid steering value for channel1, should be an int: %v", err)
 	}
 	a.steering = convertPwmSteeringToPercent(value, a.pwmSteeringConfig.Left, a.pwmSteeringConfig.Right, a.pwmSteeringConfig.Center)
 }
@@ -151,10 +151,10 @@ func convertPwmSteeringToPercent(value int, minPwm int, maxPwm int, middlePwm in
 }
 
 func (a *Part) processChannel2(v string) {
-	zap.L().Debug("process new value for channel2", zap.String("value", v))
+	zap.L().Debug("process new throttle value on channel2", zap.String("value", v))
 	value, err := strconv.Atoi(v)
 	if err != nil {
-		zap.S().Errorf("invalid value for channel2, should be an int: %v", err)
+		zap.S().Errorf("invalid throttle value for channel2, should be an int: %v", err)
 	}
 	if value < MinPwmThrottle {
 		value = MinPwmThrottle
@@ -177,7 +177,7 @@ func (a *Part) processChannel5(v string) {
 
 	value, err := strconv.Atoi(v)
 	if err != nil {
-		zap.S().Errorf("invalid value for channel5, should be an int: %v", err)
+		zap.S().Errorf("invalid value for channel5 'record', should be an int: %v", err)
 	}
 
 	if value < 1800 {
@@ -197,17 +197,17 @@ func (a *Part) processChannel6(v string) {
 	zap.L().Debug("process new value for channel6", zap.String("value", v))
 	value, err := strconv.Atoi(v)
 	if err != nil {
-		zap.S().Errorf("invalid value for channel6, should be an int: %v", err)
+		zap.S().Errorf("invalid value for channel6 'drive-mode', should be an int: %v", err)
 		return
 	}
 	if value > 1800 {
 		if a.driveMode != events.DriveMode_PILOT {
-			zap.S().Infof("Update channel 6 with value %v, new user_mode: %v", value, events.DriveMode_PILOT)
+			zap.S().Infof("Update channel 6 'drive-mode' with value %v, new user_mode: %v", value, events.DriveMode_PILOT)
 			a.driveMode = events.DriveMode_PILOT
 		}
 	} else {
 		if a.driveMode != events.DriveMode_USER {
-			zap.S().Infof("Update channel 6 with value %v, new user_mode: %v", value, events.DriveMode_USER)
+			zap.S().Infof("Update channel 6 'drive-mode' with value %v, new user_mode: %v", value, events.DriveMode_USER)
 		}
 		a.driveMode = events.DriveMode_USER
 	}
