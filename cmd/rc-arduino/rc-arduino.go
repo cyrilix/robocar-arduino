@@ -84,6 +84,9 @@ func main() {
 
 	sc := arduino.NewAsymetricPWMSteeringConfig(steeringLeftPWM, steeringRightPWM, steeringCenterPWM)
 	a := arduino.NewPart(client, device, baud, throttleTopic, steeringTopic, driveModeTopic, switchRecordTopic, pubFrequency, sc)
+
+	cli.HandleExit(a)
+
 	err = a.Start()
 	if err != nil {
 		zap.S().Errorw("unable to start service", "error", err)
