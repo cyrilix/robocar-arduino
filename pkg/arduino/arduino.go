@@ -170,7 +170,16 @@ func (a *Part) processChannel2(v string) {
 	} else if value > a.pwmThrottleConfig.Max {
 		value = a.pwmThrottleConfig.Max
 	}
-	a.throttle = ((float32(value)-MinPwmThrottle)/(MaxPwmThrottle-MinPwmThrottle))*2.0 - 1.0
+
+	throttle := 0.
+	if value > a.pwmThrottleConfig.Zero {
+		throttle = (float64(value) - float64(a.pwmThrottleConfig.Zero)) / float64(a.pwmThrottleConfig.Max-a.pwmThrottleConfig.Zero)
+	}
+	if value < a.pwmThrottleConfig.Zero {
+		throttle = -1. * (float64(a.pwmThrottleConfig.Zero) - float64(value)) / (float64(a.pwmThrottleConfig.Zero - a.pwmThrottleConfig.Min))
+	}
+
+	a.throttle = float32(throttle)
 }
 
 func (a *Part) processChannel3(v string) {

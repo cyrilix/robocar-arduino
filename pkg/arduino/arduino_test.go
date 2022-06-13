@@ -148,7 +148,7 @@ func TestArduinoPart_Update(t *testing.T) {
 		{"Throttle: stop",
 			fmt.Sprintf("12430,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, 1450, channel3, channel4, channel5, channel6, distanceCm),
 			defaultPwmThrottleConfig,
-			-0.03, -1., events.DriveMode_USER, false},
+			0.0, -1., events.DriveMode_USER, false},
 		{"Throttle: up",
 			fmt.Sprintf("12435,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, 1948, channel3, channel4, channel5, channel6, distanceCm),
 			defaultPwmThrottleConfig,
@@ -157,6 +157,10 @@ func TestArduinoPart_Update(t *testing.T) {
 			fmt.Sprintf("12440,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, 2998, channel3, channel4, channel5, channel6, distanceCm),
 			defaultPwmThrottleConfig,
 			1., -1., events.DriveMode_USER, false},
+		{"Throttle: zero not middle",
+			fmt.Sprintf("12440,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, 1600, channel3, channel4, channel5, channel6, distanceCm),
+			PWMThrottleConfig{1000, 1700, 1500},
+			0.5, -1., events.DriveMode_USER, false},
 	}
 
 	for _, c := range cases {
@@ -169,7 +173,7 @@ func TestArduinoPart_Update(t *testing.T) {
 		if err != nil {
 			t.Error("unable to flush content")
 		}
-		
+
 		a.pwmThrottleConfig = c.throttlePwmConfig
 
 		time.Sleep(10 * time.Millisecond)
