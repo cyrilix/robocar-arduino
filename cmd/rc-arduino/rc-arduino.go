@@ -15,6 +15,10 @@ const (
 
 	SteeringLeftPWM  = 1004
 	SteeringRightPWM = 1986
+
+	ThrottleZeroPWM = 1260
+	ThrottleMinPWM  = 972.0
+	ThrottleMaxPWM  = 1954.0
 )
 
 var (
@@ -34,6 +38,7 @@ func main() {
 	cli.InitMqttFlags(DefaultClientId, &mqttBroker, &username, &password, &clientId, &mqttQos, &mqttRetain)
 
 	var steeringLeftPWM, steeringRightPWM, steeringCenterPWM int
+	var throttleMinPWM, throttleMaxPWM, throttleZeroPWM int
 	if err := cli.SetIntDefaultValueFromEnv(&steeringLeftPWM, "STEERING_LEFT_PWM", SteeringLeftPWM); err != nil {
 		zap.S().Warnf("unable to init steeringLeftPWM arg: %v", err)
 	}
@@ -41,6 +46,15 @@ func main() {
 		zap.S().Warnf("unable to init steeringRightPWM arg: %v", err)
 	}
 	if err := cli.SetIntDefaultValueFromEnv(&steeringCenterPWM, "STEERING_CENTER_PWM", SteeringCenterPWM); err != nil {
+		zap.S().Warnf("unable to init steeringRightPWM arg: %v", err)
+	}
+	if err := cli.SetIntDefaultValueFromEnv(&throttleMinPWM, "THROTTLE_MIN_PWM", ThrottleMinPWM); err != nil {
+		zap.S().Warnf("unable to init steeringLeftPWM arg: %v", err)
+	}
+	if err := cli.SetIntDefaultValueFromEnv(&throttleMaxPWM, "THROTTLE_MAX_PWM", ThrottleMaxPWM); err != nil {
+		zap.S().Warnf("unable to init steeringRightPWM arg: %v", err)
+	}
+	if err := cli.SetIntDefaultValueFromEnv(&throttleZeroPWM, "THROTTLE_ZERO_PWM", ThrottleZeroPWM); err != nil {
 		zap.S().Warnf("unable to init steeringRightPWM arg: %v", err)
 	}
 
@@ -54,6 +68,9 @@ func main() {
 	flag.IntVar(&steeringLeftPWM, "steering-left-pwm", steeringLeftPWM, "Right left value for steering PWM, STEERING_LEFT_PWM env if args not set")
 	flag.IntVar(&steeringRightPWM, "steering-right-pwm", steeringRightPWM, "Right right value for steering PWM, STEERING_RIGHT_PWM env if args not set")
 	flag.IntVar(&steeringCenterPWM, "steering-center-pwm", steeringCenterPWM, "Center value for steering PWM, STEERING_CENTER_PWM env if args not set")
+	flag.IntVar(&throttleMinPWM, "throttle-min-pwm", throttleMinPWM, "Min value for throttle PWM, THROTTLE_MIN_PWM env if args not set")
+	flag.IntVar(&steeringRightPWM, "throttle-max-pwm", throttleMaxPWM, "Throttle max value for throttle PWM, THROTTLE_MAX_PWM env if args not set")
+	flag.IntVar(&steeringCenterPWM, "throttle-zero-pwm", throttleZeroPWM, "Zero value for throttle PWM, THROTTLE_ZERO_PWM env if args not set")
 
 	logLevel := zap.LevelFlag("log", zap.InfoLevel, "log level")
 	flag.Parse()
@@ -83,7 +100,8 @@ func main() {
 	defer client.Disconnect(10)
 
 	sc := arduino.NewAsymetricPWMSteeringConfig(steeringLeftPWM, steeringRightPWM, steeringCenterPWM)
-	a := arduino.NewPart(client, device, baud, throttleTopic, steeringTopic, driveModeTopic, switchRecordTopic, pubFrequency, sc)
+	tc := arduino.PWMThrottleConfig{Min: throttleMinPWM, Max: throttleMaxPWM, Zero: throttleZeroPWM}
+	a := arduino.NewPart(client, device, baud, throttleTopic, steeringTopic, driveModeTopic, switchRecordTopic, pubFrequency, sc, tc)
 
 	cli.HandleExit(a)
 

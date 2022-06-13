@@ -37,6 +37,13 @@ type Part struct {
 	cancel                                                          chan interface{}
 
 	pwmSteeringConfig PWMSteeringConfig
+	pwmThrottleConfig PWMThrottleConfig
+}
+
+type PWMThrottleConfig struct {
+	Min  int
+	Max  int
+	Zero int
 }
 
 type PWMSteeringConfig struct {
@@ -52,6 +59,7 @@ func NewPWMSteeringConfig(min, max int) PWMSteeringConfig {
 		Center: min + (max-min)/2,
 	}
 }
+
 func NewAsymetricPWMSteeringConfig(min, max, middle int) PWMSteeringConfig {
 	c := NewPWMSteeringConfig(min, max)
 	c.Center = middle
@@ -59,7 +67,7 @@ func NewAsymetricPWMSteeringConfig(min, max, middle int) PWMSteeringConfig {
 }
 
 func NewPart(client mqtt.Client, name string, baud int, throttleTopic, steeringTopic, driveModeTopic,
-	switchRecordTopic string, pubFrequency float64, steeringConfig PWMSteeringConfig) *Part {
+	switchRecordTopic string, pubFrequency float64, steeringConfig PWMSteeringConfig, throttleConfig PWMThrottleConfig) *Part {
 	c := &serial.Config{Name: name, Baud: baud}
 	s, err := serial.OpenPort(c)
 	if err != nil {
@@ -77,6 +85,7 @@ func NewPart(client mqtt.Client, name string, baud int, throttleTopic, steeringT
 		cancel:            make(chan interface{}),
 
 		pwmSteeringConfig: steeringConfig,
+		pwmThrottleConfig: throttleConfig,
 	}
 }
 
@@ -156,10 +165,10 @@ func (a *Part) processChannel2(v string) {
 	if err != nil {
 		zap.S().Errorf("invalid throttle value for channel2, should be an int: %v", err)
 	}
-	if value < MinPwmThrottle {
-		value = MinPwmThrottle
-	} else if value > MaxPwmThrottle {
-		value = MaxPwmThrottle
+	if value < a.pwmThrottleConfig.Min {
+		value = a.pwmThrottleConfig.Min
+	} else if value > a.pwmThrottleConfig.Max {
+		value = a.pwmThrottleConfig.Max
 	}
 	a.throttle = ((float32(value)-MinPwmThrottle)/(MaxPwmThrottle-MinPwmThrottle))*2.0 - 1.0
 }
@@ -248,7 +257,7 @@ func (a *Part) publishThrottle() {
 		return
 	}
 	zap.L().Debug("throttle channel", zap.Float32("throttle", a.throttle))
-	publish(a.client, a.throttleTopic, &throttleMessage)
+	publish(a.client, a.throttleTopic, throttleMessage)
 }
 
 func (a *Part) publishSteering() {
@@ -262,7 +271,7 @@ func (a *Part) publishSteering() {
 		return
 	}
 	zap.L().Debug("steering channel", zap.Float32("steering", a.steering))
-	publish(a.client, a.steeringTopic, &steeringMessage)
+	publish(a.client, a.steeringTopic, steeringMessage)
 }
 
 func (a *Part) publishDriveMode() {
@@ -274,7 +283,7 @@ func (a *Part) publishDriveMode() {
 		zap.S().Errorf("unable to marshal protobuf driveMode message: %v", err)
 		return
 	}
-	publish(a.client, a.driveModeTopic, &driveModeMessage)
+	publish(a.client, a.driveModeTopic, driveModeMessage)
 }
 
 func (a *Part) publishSwitchRecord() {
@@ -286,9 +295,9 @@ func (a *Part) publishSwitchRecord() {
 		zap.S().Errorf("unable to marshal protobuf SwitchRecord message: %v", err)
 		return
 	}
-	publish(a.client, a.switchRecordTopic, &switchRecordMessage)
+	publish(a.client, a.switchRecordTopic, switchRecordMessage)
 }
 
-var publish = func(client mqtt.Client, topic string, payload *[]byte) {
-	client.Publish(topic, 0, false, *payload)
+var publish = func(client mqtt.Client, topic string, payload []byte) {
+	client.Publish(topic, 0, false, payload)
 }

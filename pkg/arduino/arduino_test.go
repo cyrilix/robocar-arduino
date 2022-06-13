@@ -26,7 +26,7 @@ func TestArduinoPart_Update(t *testing.T) {
 	oldPublish := publish
 	defer func() { publish = oldPublish }()
 
-	publish = func(client mqtt.Client, topic string, payload *[]byte) {}
+	publish = func(client mqtt.Client, topic string, payload []byte) {}
 
 	ln, err := net.Listen("tcp", ":8080")
 	if err != nil {
@@ -58,7 +58,11 @@ func TestArduinoPart_Update(t *testing.T) {
 		}
 	}()
 
-	a := Part{client: nil, serial: conn, pubFrequency: 100, pwmSteeringConfig: NewAsymetricPWMSteeringConfig(MinPwmAngle, MaxPwmAngle, MiddlePwmAngle)}
+	defaultPwmThrottleConfig := PWMThrottleConfig{MinPwmThrottle, MaxPwmThrottle, MinPwmThrottle + (MaxPwmThrottle-MinPwmAngle)/int(2)}
+	a := Part{client: nil, serial: conn, pubFrequency: 100,
+		pwmSteeringConfig: NewAsymetricPWMSteeringConfig(MinPwmAngle, MaxPwmAngle, MiddlePwmAngle),
+	}
+
 	go func() {
 		err := a.Start()
 		if err != nil {
@@ -70,75 +74,88 @@ func TestArduinoPart_Update(t *testing.T) {
 	channel1, channel2, channel3, channel4, channel5, channel6, distanceCm := 678, 910, 1112, 1678, 1910, 112, 128
 	cases := []struct {
 		name, content                      string
+		throttlePwmConfig                  PWMThrottleConfig
 		expectedThrottle, expectedSteering float32
 		expectedDriveMode                  events.DriveMode
 		expectedSwitchRecord               bool
 	}{
 		{"Good value",
 			fmt.Sprintf("12345,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, channel2, channel3, channel4, channel5, channel6, distanceCm),
-			-1., -1., events.DriveMode_USER, false},
+			defaultPwmThrottleConfig, -1., -1.,
+			events.DriveMode_USER, false},
 		{"Unparsable line",
-			"12350,invalid line\n",
+			"12350,invalid line\n", defaultPwmThrottleConfig,
 			-1., -1., events.DriveMode_USER, false},
 		{"Switch record on",
-			fmt.Sprintf("12355,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, channel2, channel3, channel4, 998, channel6, distanceCm),
+			fmt.Sprintf("12355,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, channel2, channel3, channel4, 998, channel6, distanceCm), defaultPwmThrottleConfig,
 			-1., -1., events.DriveMode_USER, true},
 
 		{"Switch record off",
-			fmt.Sprintf("12360,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, channel2, channel3, channel4, 1987, channel6, distanceCm),
+			fmt.Sprintf("12360,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, channel2, channel3, channel4, 1987, channel6, distanceCm), defaultPwmThrottleConfig,
 			-1., -1., events.DriveMode_USER, false},
 		{"Switch record off",
-			fmt.Sprintf("12365,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, channel2, channel3, channel4, 1850, channel6, distanceCm),
+			fmt.Sprintf("12365,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, channel2, channel3, channel4, 1850, channel6, distanceCm), defaultPwmThrottleConfig,
 			-1., -1., events.DriveMode_USER, false},
 		{"Switch record on",
-			fmt.Sprintf("12370,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, channel2, channel3, channel4, 1003, channel6, distanceCm),
+			fmt.Sprintf("12370,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, channel2, channel3, channel4, 1003, channel6, distanceCm), defaultPwmThrottleConfig,
 			-1., -1., events.DriveMode_USER, true},
 
 		{"DriveMode: user",
-			fmt.Sprintf("12375,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, channel2, channel3, channel4, channel5, 998, distanceCm),
+			fmt.Sprintf("12375,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, channel2, channel3, channel4, channel5, 998, distanceCm), defaultPwmThrottleConfig,
 			-1., -1., events.DriveMode_USER, false},
 		{"DriveMode: pilot",
-			fmt.Sprintf("12380,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, channel2, channel3, channel4, channel5, 1987, distanceCm),
+			fmt.Sprintf("12380,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, channel2, channel3, channel4, channel5, 1987, distanceCm), defaultPwmThrottleConfig,
 			-1., -1., events.DriveMode_PILOT, false},
 		{"DriveMode: pilot",
-			fmt.Sprintf("12385,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, channel2, channel3, channel4, channel5, 1850, distanceCm),
+			fmt.Sprintf("12385,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, channel2, channel3, channel4, channel5, 1850, distanceCm), defaultPwmThrottleConfig,
 			-1., -1., events.DriveMode_PILOT, false},
 
 		// DriveMode: user
 		{"DriveMode: user",
 			fmt.Sprintf("12390,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, channel2, channel3, channel4, channel5, 1003, distanceCm),
+			defaultPwmThrottleConfig,
 			-1., -1., events.DriveMode_USER, false},
 
 		{"Sterring: over left",
 			fmt.Sprintf("12395,%d,%d,%d,%d,%d,%d,50,%d\n", 99, channel2, channel3, channel4, channel5, channel6, distanceCm),
+			defaultPwmThrottleConfig,
 			-1., -1., events.DriveMode_USER, false},
 		{"Sterring: left",
 			fmt.Sprintf("12400,%d,%d,%d,%d,%d,%d,50,%d\n", int(MinPwmAngle+40), channel2, channel3, channel4, channel5, channel6, distanceCm),
+			defaultPwmThrottleConfig,
 			-1., -0.92, events.DriveMode_USER, false},
 		{"Sterring: middle",
 			fmt.Sprintf("12405,%d,%d,%d,%d,%d,%d,50,%d\n", 1450, channel2, channel3, channel4, channel5, channel6, distanceCm),
+			defaultPwmThrottleConfig,
 			-1., -0.09, events.DriveMode_USER, false},
 		{"Sterring: right",
 			fmt.Sprintf("12410,%d,%d,%d,%d,%d,%d,50,%d\n", 1958, channel2, channel3, channel4, channel5, channel6, distanceCm),
+			defaultPwmThrottleConfig,
 			-1., 0.95, events.DriveMode_USER, false},
 		{"Sterring: over right",
 			fmt.Sprintf("12415,%d,%d,%d,%d,%d,%d,50,%d\n", 2998, channel2, channel3, channel4, channel5, channel6, distanceCm),
+			defaultPwmThrottleConfig,
 			-1., 1., events.DriveMode_USER, false},
 
 		{"Throttle: over down",
 			fmt.Sprintf("12420,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, 99, channel3, channel4, channel5, channel6, distanceCm),
+			defaultPwmThrottleConfig,
 			-1., -1., events.DriveMode_USER, false},
 		{"Throttle: down",
 			fmt.Sprintf("12425,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, 998, channel3, channel4, channel5, channel6, distanceCm),
+			defaultPwmThrottleConfig,
 			-0.95, -1., events.DriveMode_USER, false},
 		{"Throttle: stop",
 			fmt.Sprintf("12430,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, 1450, channel3, channel4, channel5, channel6, distanceCm),
+			defaultPwmThrottleConfig,
 			-0.03, -1., events.DriveMode_USER, false},
 		{"Throttle: up",
 			fmt.Sprintf("12435,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, 1948, channel3, channel4, channel5, channel6, distanceCm),
+			defaultPwmThrottleConfig,
 			0.99, -1., events.DriveMode_USER, false},
 		{"Throttle: over up",
 			fmt.Sprintf("12440,%d,%d,%d,%d,%d,%d,50,%d\n", channel1, 2998, channel3, channel4, channel5, channel6, distanceCm),
+			defaultPwmThrottleConfig,
 			1., -1., events.DriveMode_USER, false},
 	}
 
@@ -152,6 +169,8 @@ func TestArduinoPart_Update(t *testing.T) {
 		if err != nil {
 			t.Error("unable to flush content")
 		}
+		
+		a.pwmThrottleConfig = c.throttlePwmConfig
 
 		time.Sleep(10 * time.Millisecond)
 		a.mutex.Lock()
@@ -177,10 +196,10 @@ func TestPublish(t *testing.T) {
 
 	var muPublishedEvents sync.Mutex
 	pulishedEvents := make(map[string][]byte)
-	publish = func(client mqtt.Client, topic string, payload *[]byte) {
+	publish = func(client mqtt.Client, topic string, payload []byte) {
 		muPublishedEvents.Lock()
 		defer muPublishedEvents.Unlock()
-		pulishedEvents[topic] = *payload
+		pulishedEvents[topic] = payload
 	}
 
 	ln, err := net.Listen("tcp", ":8080")
