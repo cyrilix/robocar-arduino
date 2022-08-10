@@ -21,7 +21,12 @@ const (
 )
 
 var (
-	serialLineRegex = regexp.MustCompile(`(?P<timestamp>\d+),(?P<channel_1>\d+),(?P<channel_2>\d+),(?P<channel_3>\d+),(?P<channel_4>\d+),(?P<channel_5>\d+),(?P<channel_6>\d+),(?P<channel_7>\d+),(?P<channel_8>\d+),(?P<frequency>\d+)`)
+	serialLineRegex    = regexp.MustCompile(`(?P<timestamp>\d+),(?P<channel_1>\d+),(?P<channel_2>\d+),(?P<channel_3>\d+),(?P<channel_4>\d+),(?P<channel_5>\d+),(?P<channel_6>\d+),(?P<channel_7>\d+),(?P<channel_8>\d+),(?P<frequency>\d+)`)
+	DefaultPwmThrottle = PWMConfig{
+		Min:    MinPwmThrottle,
+		Max:    MaxPwmThrottle,
+		Middle: MinPwmThrottle + (MaxPwmThrottle-MinPwmThrottle)/2,
+	}
 )
 
 type Part struct {
@@ -30,50 +35,68 @@ type Part struct {
 	pubFrequency                                                    float64
 	serial                                                          io.Reader
 	mutex                                                           sync.Mutex
-	steering                                                        float32
-	throttle                                                        float32
+	steering, secondarySteering                                     float32
+	throttle, secondaryThrottle                                     float32
 	ctrlRecord                                                      bool
 	driveMode                                                       events.DriveMode
 	cancel                                                          chan interface{}
 
-	pwmSteeringConfig PWMSteeringConfig
-	pwmThrottleConfig PWMThrottleConfig
+	useSecondaryRc             bool
+	pwmSteeringConfig          *PWMConfig
+	pwmSecondarySteeringConfig *PWMConfig
+	pwmThrottleConfig          *PWMConfig
+	pwmSecondaryThrottleConfig *PWMConfig
 }
 
-type PWMThrottleConfig struct {
-	Min  int
-	Max  int
-	Zero int
+type PWMConfig struct {
+	Min    int
+	Max    int
+	Middle int
 }
 
-type PWMSteeringConfig struct {
-	Left   int
-	Right  int
-	Center int
-}
-
-func NewPWMSteeringConfig(min, max int) PWMSteeringConfig {
-	return PWMSteeringConfig{
-		Left:   min,
-		Right:  max,
-		Center: min + (max-min)/2,
+func NewPWMConfig(min, max int) *PWMConfig {
+	return &PWMConfig{
+		Min:    min,
+		Max:    max,
+		Middle: min + (max-min)/2,
 	}
 }
 
-func NewAsymetricPWMSteeringConfig(min, max, middle int) PWMSteeringConfig {
-	c := NewPWMSteeringConfig(min, max)
-	c.Center = middle
+func NewAsymetricPWMConfig(min, max, middle int) *PWMConfig {
+	c := NewPWMConfig(min, max)
+	c.Middle = middle
 	return c
 }
 
+type Option func(p *Part)
+
+func WithThrottleConfig(throttleConfig *PWMConfig) Option {
+	return func(p *Part) {
+		p.pwmThrottleConfig = throttleConfig
+	}
+}
+
+func WithSteeringConfig(steeringConfig *PWMConfig) Option {
+	return func(p *Part) {
+		p.pwmSteeringConfig = steeringConfig
+	}
+}
+
+func WithSecondaryRC(throttleConfig, steeringConfig *PWMConfig) Option {
+	return func(p *Part) {
+		p.pwmSecondaryThrottleConfig = throttleConfig
+		p.pwmSecondarySteeringConfig = steeringConfig
+	}
+}
+
 func NewPart(client mqtt.Client, name string, baud int, throttleTopic, steeringTopic, driveModeTopic,
-	switchRecordTopic string, pubFrequency float64, steeringConfig PWMSteeringConfig, throttleConfig PWMThrottleConfig) *Part {
+	switchRecordTopic string, pubFrequency float64, options ...Option) *Part {
 	c := &serial.Config{Name: name, Baud: baud}
 	s, err := serial.OpenPort(c)
 	if err != nil {
 		zap.S().Panicw("unable to open serial port: %v", err)
 	}
-	return &Part{
+	p := &Part{
 		client:            client,
 		serial:            s,
 		throttleTopic:     throttleTopic,
@@ -84,9 +107,16 @@ func NewPart(client mqtt.Client, name string, baud int, throttleTopic, steeringT
 		driveMode:         events.DriveMode_INVALID,
 		cancel:            make(chan interface{}),
 
-		pwmSteeringConfig: steeringConfig,
-		pwmThrottleConfig: throttleConfig,
+		pwmSteeringConfig:          &DefaultPwmThrottle,
+		pwmSecondarySteeringConfig: &DefaultPwmThrottle,
+		pwmThrottleConfig:          &DefaultPwmThrottle,
+		pwmSecondaryThrottleConfig: &DefaultPwmThrottle,
 	}
+
+	for _, o := range options {
+		o(p)
+	}
+	return p
 }
 
 func (a *Part) Start() error {
@@ -121,6 +151,8 @@ func (a *Part) updateValues(values []string) {
 	a.processChannel4(values[4])
 	a.processChannel5(values[5])
 	a.processChannel6(values[6])
+	a.processChannel7(values[7])
+	a.processChannel8(values[8])
 }
 
 func (a *Part) Stop() {
@@ -140,23 +172,23 @@ func (a *Part) processChannel1(v string) {
 	if err != nil {
 		zap.S().Errorf("invalid steering value for channel1, should be an int: %v", err)
 	}
-	a.steering = convertPwmSteeringToPercent(value, a.pwmSteeringConfig.Left, a.pwmSteeringConfig.Right, a.pwmSteeringConfig.Center)
+	a.steering = convertPwmSteeringToPercent(value, a.pwmSteeringConfig)
 }
 
-func convertPwmSteeringToPercent(value int, minPwm int, maxPwm int, middlePwm int) float32 {
-	if value < minPwm {
-		value = minPwm
-	} else if value > maxPwm {
-		value = maxPwm
+func convertPwmSteeringToPercent(value int, c *PWMConfig) float32 {
+	if value < c.Min {
+		value = c.Min
+	} else if value > c.Max {
+		value = c.Max
 	}
-	if value == middlePwm {
+	if value == c.Middle {
 		return 0.
 	}
-	if value < middlePwm {
-		return (float32(value) - float32(middlePwm)) / float32(middlePwm-minPwm)
+	if value < c.Middle {
+		return (float32(value) - float32(c.Middle)) / float32(c.Middle-c.Min)
 	}
 	//  middle < value < max
-	return (float32(value) - float32(middlePwm)) / float32(maxPwm-middlePwm)
+	return (float32(value) - float32(c.Middle)) / float32(c.Max-c.Middle)
 }
 
 func (a *Part) processChannel2(v string) {
@@ -172,11 +204,11 @@ func (a *Part) processChannel2(v string) {
 	}
 
 	throttle := 0.
-	if value > a.pwmThrottleConfig.Zero {
-		throttle = (float64(value) - float64(a.pwmThrottleConfig.Zero)) / float64(a.pwmThrottleConfig.Max-a.pwmThrottleConfig.Zero)
+	if value > a.pwmThrottleConfig.Middle {
+		throttle = (float64(value) - float64(a.pwmThrottleConfig.Middle)) / float64(a.pwmThrottleConfig.Max-a.pwmThrottleConfig.Middle)
 	}
-	if value < a.pwmThrottleConfig.Zero {
-		throttle = -1. * (float64(a.pwmThrottleConfig.Zero) - float64(value)) / (float64(a.pwmThrottleConfig.Zero - a.pwmThrottleConfig.Min))
+	if value < a.pwmThrottleConfig.Middle {
+		throttle = -1. * (float64(a.pwmThrottleConfig.Middle) - float64(value)) / (float64(a.pwmThrottleConfig.Middle - a.pwmThrottleConfig.Min))
 	}
 
 	a.throttle = float32(throttle)
@@ -184,6 +216,11 @@ func (a *Part) processChannel2(v string) {
 
 func (a *Part) processChannel3(v string) {
 	zap.L().Debug("process new value for channel3", zap.String("value", v))
+	value, err := strconv.Atoi(v)
+	if err != nil {
+		zap.S().Errorf("invalid throttle value for channel2, should be an int: %v", err)
+	}
+	a.useSecondaryRc = value > 1900
 }
 
 func (a *Part) processChannel4(v string) {
@@ -231,6 +268,59 @@ func (a *Part) processChannel6(v string) {
 	}
 }
 
+func (a *Part) processChannel7(v string) {
+	zap.L().Debug("process new value for secondary steering on channel7", zap.String("value", v))
+	value, err := strconv.Atoi(v)
+	if err != nil {
+		zap.S().Errorf("invalid steering value for channel7, should be an int: %v", err)
+	}
+	a.secondarySteering = convertPwmSteeringToPercent(value, a.pwmSecondarySteeringConfig)
+}
+
+func (a *Part) processChannel8(v string) {
+	zap.L().Debug("process new throttle value on channel8", zap.String("value", v))
+	value, err := strconv.Atoi(v)
+	if err != nil {
+		zap.S().Errorf("invalid throttle value for channel8, should be an int: %v", err)
+	}
+	if value < a.pwmSecondaryThrottleConfig.Min {
+		value = a.pwmSecondaryThrottleConfig.Min
+	} else if value > a.pwmSecondaryThrottleConfig.Max {
+		value = a.pwmSecondaryThrottleConfig.Max
+	}
+	a.secondaryThrottle = ((float32(value)-float32(a.pwmSecondaryThrottleConfig.Min))/float32(a.pwmSecondaryThrottleConfig.Max-a.pwmSecondaryThrottleConfig.Min))*2.0 - 1.0
+}
+
+func (a *Part) Throttle() float32 {
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
+	if a.useSecondaryRc {
+		return a.secondaryThrottle
+	}
+	return a.throttle
+}
+
+func (a *Part) Steering() float32 {
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
+	if a.useSecondaryRc {
+		return a.secondarySteering
+	}
+	return a.steering
+}
+
+func (a *Part) DriveMode() events.DriveMode {
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
+	return a.driveMode
+}
+
+func (a *Part) SwitchRecord() bool {
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
+	return a.ctrlRecord
+}
+
 func (a *Part) publishLoop() {
 	ticker := time.NewTicker(time.Second / time.Duration(int(a.pubFrequency)))
 
@@ -246,9 +336,6 @@ func (a *Part) publishLoop() {
 }
 
 func (a *Part) publishValues() {
-	a.mutex.Lock()
-	defer a.mutex.Unlock()
-
 	a.publishThrottle()
 	a.publishSteering()
 	a.publishDriveMode()
@@ -257,7 +344,7 @@ func (a *Part) publishValues() {
 
 func (a *Part) publishThrottle() {
 	throttle := events.ThrottleMessage{
-		Throttle:   a.throttle,
+		Throttle:   a.Throttle(),
 		Confidence: 1.0,
 	}
 	throttleMessage, err := proto.Marshal(&throttle)
@@ -271,7 +358,7 @@ func (a *Part) publishThrottle() {
 
 func (a *Part) publishSteering() {
 	steering := events.SteeringMessage{
-		Steering:   a.steering,
+		Steering:   a.Steering(),
 		Confidence: 1.0,
 	}
 	steeringMessage, err := proto.Marshal(&steering)
@@ -285,7 +372,7 @@ func (a *Part) publishSteering() {
 
 func (a *Part) publishDriveMode() {
 	dm := events.DriveModeMessage{
-		DriveMode: a.driveMode,
+		DriveMode: a.DriveMode(),
 	}
 	driveModeMessage, err := proto.Marshal(&dm)
 	if err != nil {
@@ -297,7 +384,7 @@ func (a *Part) publishDriveMode() {
 
 func (a *Part) publishSwitchRecord() {
 	sr := events.SwitchRecordMessage{
-		Enabled: !a.ctrlRecord,
+		Enabled: !a.SwitchRecord(),
 	}
 	switchRecordMessage, err := proto.Marshal(&sr)
 	if err != nil {

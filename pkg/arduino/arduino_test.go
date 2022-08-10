@@ -58,11 +58,9 @@ func TestArduinoPart_Update(t *testing.T) {
 		}
 	}()
 
-	defaultPwmThrottleConfig := PWMThrottleConfig{MinPwmThrottle, MaxPwmThrottle, MinPwmThrottle + (MaxPwmThrottle-MinPwmAngle)/int(2)}
-	a := Part{client: nil, serial: conn, pubFrequency: 100,
-		pwmSteeringConfig: NewAsymetricPWMSteeringConfig(MinPwmAngle, MaxPwmAngle, MiddlePwmAngle),
-	}
-
+	defaultPwmThrottleConfig := NewPWMConfig(MinPwmThrottle, MaxPwmThrottle)
+	a := Part{client: nil, serial: conn, pubFrequency: 100, pwmSteeringConfig: NewAsymetricPWMConfig(MinPwmAngle, MaxPwmAngle, MiddlePwmAngle),
+		pwmThrottleConfig: &DefaultPwmThrottle, pwmSecondaryThrottleConfig: &DefaultPwmThrottle, pwmSecondarySteeringConfig: NewPWMConfig(MinPwmThrottle, MaxPwmThrottle)}
 	go func() {
 		err := a.Start()
 		if err != nil {
@@ -71,10 +69,10 @@ func TestArduinoPart_Update(t *testing.T) {
 		}
 	}()
 
-	channel1, channel2, channel3, channel4, channel5, channel6, channel7, channel8 := 678, 910, 1112, 1678, 1910, 112, 0, 0
+	channel1, channel2, channel3, channel4, channel5, channel6, channel7, channel8 := 678, 910, 1012, 1678, 1910, 112, 0, 0
 	cases := []struct {
 		name, content                      string
-		throttlePwmConfig                  PWMThrottleConfig
+		throttlePwmConfig                  *PWMConfig
 		expectedThrottle, expectedSteering float32
 		expectedDriveMode                  events.DriveMode
 		expectedSwitchRecord               bool
@@ -138,7 +136,7 @@ func TestArduinoPart_Update(t *testing.T) {
 			defaultPwmThrottleConfig, -0.95, -1., events.DriveMode_USER, false},
 		{"Throttle: stop",
 			fmt.Sprintf("12430,%d,%d,%d,%d,%d,%d,%d,%d,50\n", channel1, 1450, channel3, channel4, channel5, channel6, channel7, channel8),
-			defaultPwmThrottleConfig, 0.0, -1., events.DriveMode_USER, false},
+			NewPWMConfig(1000, 1900), 0.0, -1., events.DriveMode_USER, false},
 		{"Throttle: up",
 			fmt.Sprintf("12435,%d,%d,%d,%d,%d,%d,%d,%d,50\n", channel1, 1948, channel3, channel4, channel5, channel6, channel7, channel8),
 			defaultPwmThrottleConfig, 0.99, -1., events.DriveMode_USER, false},
@@ -147,8 +145,11 @@ func TestArduinoPart_Update(t *testing.T) {
 			defaultPwmThrottleConfig, 1., -1., events.DriveMode_USER, false},
 		{"Throttle: zero not middle",
 			fmt.Sprintf("12440,%d,%d,%d,%d,%d,%d,%d,%d,50\n", channel1, 1600, channel3, channel4, channel5, channel6, channel7, channel8),
-			PWMThrottleConfig{1000, 1700, 1500},
+			&PWMConfig{1000, 1700, 1500},
 			0.5, -1., events.DriveMode_USER, false},
+		{"Use 2nd rc: use channels 7 and 8",
+			fmt.Sprintf("12440,%d,%d,%d,%d,%d,%d,%d,%d,50\n", 1000, 1000, 1950, channel4, channel5, channel6, 2000, 2008),
+			defaultPwmThrottleConfig, 1., 1, events.DriveMode_USER, false},
 	}
 
 	for _, c := range cases {
@@ -168,17 +169,17 @@ func TestArduinoPart_Update(t *testing.T) {
 			time.Sleep(10 * time.Millisecond)
 			a.mutex.Lock()
 			a.mutex.Unlock()
-			if fmt.Sprintf("%0.2f", a.throttle) != fmt.Sprintf("%0.2f", c.expectedThrottle) {
-				t.Errorf("%s: bad throttle value, expected: %0.2f, actual: %.2f", c.name, c.expectedThrottle, a.throttle)
+			if fmt.Sprintf("%0.2f", a.Throttle()) != fmt.Sprintf("%0.2f", c.expectedThrottle) {
+				t.Errorf("%s: bad throttle value, expected: %0.2f, actual: %.2f", c.name, c.expectedThrottle, a.Throttle())
 			}
-			if fmt.Sprintf("%0.2f", a.steering) != fmt.Sprintf("%0.2f", c.expectedSteering) {
-				t.Errorf("%s: bad steering value, expected: %0.2f, actual: %.2f", c.name, c.expectedSteering, a.steering)
+			if fmt.Sprintf("%0.2f", a.Steering()) != fmt.Sprintf("%0.2f", c.expectedSteering) {
+				t.Errorf("%s: bad steering value, expected: %0.2f, actual: %.2f", c.name, c.expectedSteering, a.Steering())
 			}
-			if a.driveMode != c.expectedDriveMode {
-				t.Errorf("%s: bad drive mode, expected: %v, actual:%v", c.name, c.expectedDriveMode, a.driveMode)
+			if a.DriveMode() != c.expectedDriveMode {
+				t.Errorf("%s: bad drive mode, expected: %v, actual:%v", c.name, c.expectedDriveMode, a.DriveMode())
 			}
-			if a.ctrlRecord != c.expectedSwitchRecord {
-				t.Errorf("%s: bad switch record, expected: %v, actual:%v", c.name, c.expectedSwitchRecord, a.ctrlRecord)
+			if a.SwitchRecord() != c.expectedSwitchRecord {
+				t.Errorf("%s: bad switch record, expected: %v, actual:%v", c.name, c.expectedSwitchRecord, a.SwitchRecord())
 			}
 		})
 	}
@@ -311,10 +312,8 @@ func unmarshalMsg(t *testing.T, payload []byte, msg proto.Message) {
 
 func Test_convertPwmSteeringToPercent(t *testing.T) {
 	type args struct {
-		value  int
-		middle int
-		min    int
-		max    int
+		value          int
+		steeringConfig *PWMConfig
 	}
 	tests := []struct {
 		name string
@@ -324,127 +323,151 @@ func Test_convertPwmSteeringToPercent(t *testing.T) {
 		{
 			name: "middle",
 			args: args{
-				value:  (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle,
-				middle: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle,
-				min:    MinPwmAngle,
-				max:    MaxPwmAngle,
+				value: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle,
+				steeringConfig: &PWMConfig{
+					Middle: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle,
+					Min:    MinPwmAngle,
+					Max:    MaxPwmAngle,
+				},
 			},
 			want: 0.,
 		},
 		{
 			name: "left",
 			args: args{
-				value:  MinPwmAngle,
-				middle: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle,
-				min:    MinPwmAngle,
-				max:    MaxPwmAngle,
+				value: MinPwmAngle,
+				steeringConfig: &PWMConfig{
+					Middle: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle,
+					Min:    MinPwmAngle,
+					Max:    MaxPwmAngle,
+				},
 			},
 			want: -1.,
 		},
 		{
 			name: "mid-left",
 			args: args{
-				value:  int(math.Round((MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle - (MaxPwmAngle-MinPwmAngle)/4)),
-				middle: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle,
-				min:    MinPwmAngle,
-				max:    MaxPwmAngle,
+				value: int(math.Round((MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle - (MaxPwmAngle-MinPwmAngle)/4)),
+				steeringConfig: &PWMConfig{
+					Middle: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle,
+					Min:    MinPwmAngle,
+					Max:    MaxPwmAngle,
+				},
 			},
 			want: -0.4989858,
 		},
 		{
 			name: "over left",
 			args: args{
-				value:  MinPwmAngle - 100,
-				middle: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle,
-				min:    MinPwmAngle,
-				max:    MaxPwmAngle,
+				value: MinPwmAngle - 100,
+				steeringConfig: &PWMConfig{
+					Middle: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle,
+					Min:    MinPwmAngle,
+					Max:    MaxPwmAngle,
+				},
 			},
 			want: -1.,
 		},
 		{
 			name: "right",
 			args: args{
-				value:  MaxPwmAngle,
-				middle: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle,
-				min:    MinPwmAngle,
-				max:    MaxPwmAngle,
+				value: MaxPwmAngle,
+				steeringConfig: &PWMConfig{
+					Middle: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle,
+					Min:    MinPwmAngle,
+					Max:    MaxPwmAngle,
+				},
 			},
 			want: 1.,
 		},
 		{
 			name: "mid-right",
 			args: args{
-				value:  int(math.Round((MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle + (MaxPwmAngle-MinPwmAngle)/4)),
-				middle: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle,
-				min:    MinPwmAngle,
-				max:    MaxPwmAngle,
+				value: int(math.Round((MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle + (MaxPwmAngle-MinPwmAngle)/4)),
+				steeringConfig: &PWMConfig{
+					Middle: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle,
+					Min:    MinPwmAngle,
+					Max:    MaxPwmAngle,
+				},
 			},
 			want: 0.5010142,
 		},
 		{
 			name: "over right",
 			args: args{
-				value:  MaxPwmAngle + 100,
-				middle: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle,
-				min:    MinPwmAngle,
-				max:    MaxPwmAngle,
+				value: MaxPwmAngle + 100,
+				steeringConfig: &PWMConfig{
+					Middle: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle,
+					Min:    MinPwmAngle,
+					Max:    MaxPwmAngle,
+				},
 			},
 			want: 1.,
 		},
 		{
 			name: "asymetric middle",
 			args: args{
-				value:  (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle + 100,
-				middle: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle + 100,
-				min:    MinPwmAngle,
-				max:    MaxPwmAngle,
+				value: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle + 100,
+				steeringConfig: &PWMConfig{
+					Middle: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle + 100,
+					Min:    MinPwmAngle,
+					Max:    MaxPwmAngle,
+				},
 			},
 			want: 0.,
 		},
 		{
 			name: "asymetric mid-left",
 			args: args{
-				value:  int(math.Round(((MaxPwmAngle-MinPwmAngle)/2+MinPwmAngle+100-MinPwmAngle)/2) + MinPwmAngle),
-				middle: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle + 100,
-				min:    MinPwmAngle,
-				max:    MaxPwmAngle,
+				value: int(math.Round(((MaxPwmAngle-MinPwmAngle)/2+MinPwmAngle+100-MinPwmAngle)/2) + MinPwmAngle),
+				steeringConfig: &PWMConfig{
+					Middle: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle + 100,
+					Min:    MinPwmAngle,
+					Max:    MaxPwmAngle,
+				},
 			},
 			want: -0.49915683,
 		},
 		{
 			name: "asymetric left",
 			args: args{
-				value:  MinPwmAngle,
-				middle: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle + 100,
-				min:    MinPwmAngle,
-				max:    MaxPwmAngle,
+				value: MinPwmAngle,
+				steeringConfig: &PWMConfig{
+					Middle: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle + 100,
+					Min:    MinPwmAngle,
+					Max:    MaxPwmAngle,
+				},
 			},
 			want: -1.,
 		},
 		{
 			name: "asymetric mid-right",
 			args: args{
-				value:  int(math.Round((MaxPwmAngle - (MaxPwmAngle-((MaxPwmAngle-MinPwmAngle)/2+MinPwmAngle+100))/2))),
-				middle: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle + 100,
-				min:    MinPwmAngle,
-				max:    MaxPwmAngle,
+				value: int(math.Round((MaxPwmAngle - (MaxPwmAngle-((MaxPwmAngle-MinPwmAngle)/2+MinPwmAngle+100))/2))),
+				steeringConfig: &PWMConfig{
+					Middle: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle + 100,
+					Min:    MinPwmAngle,
+					Max:    MaxPwmAngle,
+				},
 			},
 			want: 0.50127226,
 		},
 		{
 			name: "asymetric right",
 			args: args{
-				value:  MaxPwmAngle,
-				middle: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle + 100,
-				min:    MinPwmAngle,
-				max:    MaxPwmAngle,
+				value: MaxPwmAngle,
+				steeringConfig: &PWMConfig{
+					Middle: (MaxPwmAngle-MinPwmAngle)/2 + MinPwmAngle + 100,
+					Min:    MinPwmAngle,
+					Max:    MaxPwmAngle,
+				},
 			},
 			want: 1.,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := convertPwmSteeringToPercent(tt.args.value, tt.args.min, tt.args.max, tt.args.middle); got != tt.want {
+			if got := convertPwmSteeringToPercent(tt.args.value, tt.args.steeringConfig); got != tt.want {
 				t.Errorf("convertPwmSteeringToPercent() = %v, want %v", got, tt.want)
 			}
 		})
