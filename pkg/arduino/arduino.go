@@ -21,7 +21,7 @@ const (
 )
 
 var (
-	serialLineRegex    = regexp.MustCompile(`(?P<timestamp>\d+),(?P<channel_1>\d+),(?P<channel_2>\d+),(?P<channel_3>\d+),(?P<channel_4>\d+),(?P<channel_5>\d+),(?P<channel_6>\d+),(?P<channel_7>\d+),(?P<channel_8>\d+),(?P<frequency>\d+)`)
+	serialLineRegex    = regexp.MustCompile(`(?P<timestamp>\d+),(?P<channel_1>\d+),(?P<channel_2>\d+),(?P<channel_3>\d+),(?P<channel_4>\d+),(?P<channel_5>\d+),(?P<channel_6>-?\d+),(?P<channel_7>\d+),(?P<channel_8>\d+),(?P<frequency>\d+)`)
 	DefaultPwmThrottle = PWMConfig{
 		Min:    MinPwmThrottle,
 		Max:    MaxPwmThrottle,
@@ -253,6 +253,10 @@ func (a *Part) processChannel6(v string) {
 	value, err := strconv.Atoi(v)
 	if err != nil {
 		zap.S().Errorf("invalid value for channel6 'drive-mode', should be an int: %v", err)
+		return
+	}
+	if value < 0 {
+		// No value, ignore it
 		return
 	}
 	if value > 1800 {

@@ -81,9 +81,9 @@ func TestArduinoPart_Update(t *testing.T) {
 			fmt.Sprintf("12345,%d,%d,%d,%d,%d,%d,%d,%d,50\n", channel1, channel2, channel3, channel4, channel5, channel6, channel7, channel8),
 			defaultPwmThrottleConfig, -1., -1.,
 			events.DriveMode_USER, false},
-		{"Unparsable line",
+		{"Invalid line",
 			"12350,invalid line\n", defaultPwmThrottleConfig,
-			-1., -1., events.DriveMode_USER, false},
+			-1., -1., events.DriveMode_INVALID, false},
 		{"Switch record on",
 			fmt.Sprintf("12355,%d,%d,%d,%d,%d,%d,%d,%d,50\n", channel1, channel2, channel3, channel4, 998, channel6, channel7, channel8),
 			defaultPwmThrottleConfig, -1., -1., events.DriveMode_USER, true},
@@ -150,6 +150,15 @@ func TestArduinoPart_Update(t *testing.T) {
 		{"Use 2nd rc: use channels 7 and 8",
 			fmt.Sprintf("12440,%d,%d,%d,%d,%d,%d,%d,%d,50\n", 1000, 1000, 1950, channel4, channel5, channel6, 2000, 2008),
 			defaultPwmThrottleConfig, 1., 1, events.DriveMode_USER, false},
+		{"Drive Mode: user",
+			fmt.Sprintf("12430,%d,%d,%d,%d,%d,%d,%d,%d,50\n", channel1, channel6, channel3, channel4, channel5, 900, channel7, channel8),
+			defaultPwmThrottleConfig, -1., -1., events.DriveMode_USER, false},
+		{"Drive Mode: pilot",
+			fmt.Sprintf("12430,%d,%d,%d,%d,%d,%d,%d,%d,50\n", channel1, channel6, channel3, channel4, channel5, 1950, channel7, channel8),
+			defaultPwmThrottleConfig, -1., -1., events.DriveMode_PILOT, false},
+		{"Drive Mode: no value",
+			fmt.Sprintf("12430,%d,%d,%d,%d,%d,%d,%d,%d,50\n", channel1, channel6, channel3, channel4, channel5, -1, channel7, channel8),
+			defaultPwmThrottleConfig, -1., -1., events.DriveMode_INVALID, false},
 	}
 
 	for _, c := range cases {
@@ -165,6 +174,7 @@ func TestArduinoPart_Update(t *testing.T) {
 			}
 
 			a.pwmThrottleConfig = c.throttlePwmConfig
+			a.driveMode = events.DriveMode_INVALID
 
 			time.Sleep(10 * time.Millisecond)
 			a.mutex.Lock()
