@@ -2,6 +2,7 @@ package arduino
 
 import (
 	"bufio"
+	"github.com/cyrilix/robocar-arduino/pkg/tools"
 	"github.com/cyrilix/robocar-protobuf/go/events"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/tarm/serial"
@@ -21,7 +22,7 @@ const (
 )
 
 var (
-	serialLineRegex    = regexp.MustCompile(`(?P<timestamp>\d+),(?P<channel_1>\d+),(?P<channel_2>\d+),(?P<channel_3>\d+),(?P<channel_4>\d+),(?P<channel_5>\d+),(?P<channel_6>-?\d+),(?P<channel_7>\d+),(?P<channel_8>\d+),(?P<frequency>\d+)`)
+	serialLineRegex    = regexp.MustCompile(`(?P<timestamp>\d+),(?P<channel_1>\d+),(?P<channel_2>\d+),(?P<channel_3>\d+),(?P<channel_4>\d+),(?P<channel_5>\d+),(?P<channel_6>-?\d+),(?P<channel_7>\d+),(?P<channel_8>\d+),(?P<channel_9>\d+),(?P<frequency>\d+)`)
 	DefaultPwmThrottle = PWMConfig{
 		Min:    MinPwmThrottle,
 		Max:    MaxPwmThrottle,
@@ -30,22 +31,25 @@ var (
 )
 
 type Part struct {
-	client                                                          mqtt.Client
-	throttleTopic, steeringTopic, driveModeTopic, switchRecordTopic string
-	pubFrequency                                                    float64
-	serial                                                          io.Reader
-	mutex                                                           sync.Mutex
-	steering, secondarySteering                                     float32
-	throttle, secondaryThrottle                                     float32
-	ctrlRecord                                                      bool
-	driveMode                                                       events.DriveMode
-	cancel                                                          chan interface{}
+	client                                                                                 mqtt.Client
+	throttleTopic, steeringTopic, driveModeTopic, switchRecordTopic, throttleFeedbackTopic string
+	pubFrequency                                                                           float64
+	serial                                                                                 io.Reader
+	mutex                                                                                  sync.Mutex
+	steering, secondarySteering                                                            float32
+	throttle, secondaryThrottle                                                            float32
+	throttleFeedback                                                                       float32
+	ctrlRecord                                                                             bool
+	driveMode                                                                              events.DriveMode
+	cancel                                                                                 chan interface{}
 
 	useSecondaryRc             bool
 	pwmSteeringConfig          *PWMConfig
 	pwmSecondarySteeringConfig *PWMConfig
 	pwmThrottleConfig          *PWMConfig
 	pwmSecondaryThrottleConfig *PWMConfig
+
+	throttleFeedbackThresholds *tools.ThresholdConfig
 }
 
 type PWMConfig struct {
@@ -89,28 +93,46 @@ func WithSecondaryRC(throttleConfig, steeringConfig *PWMConfig) Option {
 	}
 }
 
+func WithThrottleFeedbackConfig(filename string) Option {
+	return func(p *Part) {
+		if filename == "" {
+			p.throttleFeedbackThresholds = tools.NewThresholdConfig()
+			return
+		}
+		tc, err := tools.NewThresholdConfigFromJson(filename)
+		if err != nil {
+			zap.S().Panicf("unable to load ThresholdConfig from file %v: %v", filename, err)
+		}
+		p.throttleFeedbackThresholds = tc
+
+	}
+}
+
 func NewPart(client mqtt.Client, name string, baud int, throttleTopic, steeringTopic, driveModeTopic,
-	switchRecordTopic string, pubFrequency float64, options ...Option) *Part {
+	switchRecordTopic, throttleFeedbackTopic string, pubFrequency float64, options ...Option) *Part {
 	c := &serial.Config{Name: name, Baud: baud}
 	s, err := serial.OpenPort(c)
 	if err != nil {
 		zap.S().Panicw("unable to open serial port: %v", err)
 	}
 	p := &Part{
-		client:            client,
-		serial:            s,
-		throttleTopic:     throttleTopic,
-		steeringTopic:     steeringTopic,
-		driveModeTopic:    driveModeTopic,
-		switchRecordTopic: switchRecordTopic,
-		pubFrequency:      pubFrequency,
-		driveMode:         events.DriveMode_INVALID,
-		cancel:            make(chan interface{}),
+		client:                client,
+		serial:                s,
+		throttleTopic:         throttleTopic,
+		steeringTopic:         steeringTopic,
+		driveModeTopic:        driveModeTopic,
+		switchRecordTopic:     switchRecordTopic,
+		throttleFeedbackTopic: throttleFeedbackTopic,
+		pubFrequency:          pubFrequency,
+		driveMode:             events.DriveMode_INVALID,
+		cancel:                make(chan interface{}),
 
 		pwmSteeringConfig:          &DefaultPwmThrottle,
 		pwmSecondarySteeringConfig: &DefaultPwmThrottle,
 		pwmThrottleConfig:          &DefaultPwmThrottle,
 		pwmSecondaryThrottleConfig: &DefaultPwmThrottle,
+
+		throttleFeedbackThresholds: tools.NewThresholdConfig(),
 	}
 
 	for _, o := range options {
@@ -153,6 +175,7 @@ func (a *Part) updateValues(values []string) {
 	a.processChannel6(values[6])
 	a.processChannel7(values[7])
 	a.processChannel8(values[8])
+	a.processChannel9(values[9])
 }
 
 func (a *Part) Stop() {
@@ -225,6 +248,11 @@ func (a *Part) processChannel3(v string) {
 
 func (a *Part) processChannel4(v string) {
 	zap.L().Debug("process new value for channel4", zap.String("value", v))
+	value, err := strconv.Atoi(v)
+	if err != nil {
+		zap.S().Errorf("invalid throttle value for channel2, should be an int: %v", err)
+	}
+	a.throttleFeedback = a.convertPwmFeedBackToPercent(value)
 }
 
 func (a *Part) processChannel5(v string) {
@@ -295,6 +323,10 @@ func (a *Part) processChannel8(v string) {
 	a.secondaryThrottle = ((float32(value)-float32(a.pwmSecondaryThrottleConfig.Min))/float32(a.pwmSecondaryThrottleConfig.Max-a.pwmSecondaryThrottleConfig.Min))*2.0 - 1.0
 }
 
+func (a *Part) processChannel9(v string) {
+	zap.L().Debug("process new value for channel9", zap.String("value", v))
+}
+
 func (a *Part) Throttle() float32 {
 	a.mutex.Lock()
 	defer a.mutex.Unlock()
@@ -302,6 +334,12 @@ func (a *Part) Throttle() float32 {
 		return a.secondaryThrottle
 	}
 	return a.throttle
+}
+
+func (a *Part) ThrottleFeedback() float32 {
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
+	return a.throttleFeedback
 }
 
 func (a *Part) Steering() float32 {
@@ -341,6 +379,7 @@ func (a *Part) publishLoop() {
 
 func (a *Part) publishValues() {
 	a.publishThrottle()
+	a.publishThrottleFeedback()
 	a.publishSteering()
 	a.publishDriveMode()
 	a.publishSwitchRecord()
@@ -374,6 +413,19 @@ func (a *Part) publishSteering() {
 	publish(a.client, a.steeringTopic, steeringMessage)
 }
 
+func (a *Part) publishThrottleFeedback() {
+	tm := events.ThrottleMessage{
+		Throttle:   a.ThrottleFeedback(),
+		Confidence: 1.,
+	}
+	tfMessage, err := proto.Marshal(&tm)
+	if err != nil {
+		zap.S().Errorf("unable to marshal protobuf throttleFeedback message: %v", err)
+		return
+	}
+	publish(a.client, a.throttleFeedbackTopic, tfMessage)
+}
+
 func (a *Part) publishDriveMode() {
 	dm := events.DriveModeMessage{
 		DriveMode: a.DriveMode(),
@@ -396,6 +448,10 @@ func (a *Part) publishSwitchRecord() {
 		return
 	}
 	publish(a.client, a.switchRecordTopic, switchRecordMessage)
+}
+
+func (a *Part) convertPwmFeedBackToPercent(value int) float32 {
+	return float32(a.throttleFeedbackThresholds.ValueOf(value))
 }
 
 var publish = func(client mqtt.Client, topic string, payload []byte) {

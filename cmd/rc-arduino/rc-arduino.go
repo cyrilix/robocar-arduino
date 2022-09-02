@@ -27,7 +27,8 @@ var (
 
 func main() {
 	var mqttBroker, username, password, clientId string
-	var throttleTopic, steeringTopic, driveModeTopic, switchRecordTopic string
+	var throttleTopic, steeringTopic, driveModeTopic, switchRecordTopic, throttleFeedbackTopic string
+	var feedbackConfig string
 	var device string
 	var baud int
 	var pubFrequency float64
@@ -75,8 +76,10 @@ func main() {
 	flag.StringVar(&steeringTopic, "mqtt-topic-steering", os.Getenv("MQTT_TOPIC_STEERING"), "Mqtt topic where to publish steering values, use MQTT_TOPIC_STEERING if args not set")
 	flag.StringVar(&driveModeTopic, "mqtt-topic-drive-mode", os.Getenv("MQTT_TOPIC_DRIVE_MODE"), "Mqtt topic where to publish drive mode state, use MQTT_TOPIC_DRIVE_MODE if args not set")
 	flag.StringVar(&switchRecordTopic, "mqtt-topic-switch-record", os.Getenv("MQTT_TOPIC_SWITCH_RECORD"), "Mqtt topic where to publish switch record state, use MQTT_TOPIC_SWITCH_RECORD if args not set")
+	flag.StringVar(&throttleFeedbackTopic, "mqtt-topic-throttle-feedback", os.Getenv("MQTT_TOPIC_THROTTLE_FEEDBACK"), "Mqtt topic where to publish throttle feedback, use MQTT_TOPIC_THROTTLE_FEEDBACK if args not set")
 	flag.StringVar(&device, "device", "/dev/serial0", "Serial device")
 	flag.IntVar(&baud, "baud", 115200, "Serial baud")
+	flag.StringVar(&feedbackConfig, "throttle-feedback-config", "", "config file that described thresholds to map pwm to percent the throttle feedback")
 
 	flag.IntVar(&steeringLeftPWM, "steering-left-pwm", steeringLeftPWM, "maxPwm left value for steering PWM, STEERING_LEFT_PWM env if args not set")
 	flag.IntVar(&steeringRightPWM, "steering-right-pwm", steeringRightPWM, "maxPwm right value for steering PWM, STEERING_RIGHT_PWM env if args not set")
@@ -124,8 +127,9 @@ func main() {
 	tc := arduino.NewAsymetricPWMConfig(throttleMinPWM, throttleMaxPWM, throttleZeroPWM)
 	secondaryTc := arduino.NewAsymetricPWMConfig(secondaryThrottleMinPWM, secondaryThrottleMaxPWM, secondaryThrottleMaxPWM)
 
-	a := arduino.NewPart(client, device, baud, throttleTopic, steeringTopic, driveModeTopic, switchRecordTopic,
+	a := arduino.NewPart(client, device, baud, throttleTopic, steeringTopic, driveModeTopic, switchRecordTopic, throttleFeedbackTopic,
 		pubFrequency,
+		arduino.WithThrottleFeedbackConfig(feedbackConfig),
 		arduino.WithThrottleConfig(tc),
 		arduino.WithSteeringConfig(sc),
 		arduino.WithSecondaryRC(secondaryTc, secondarySc),
