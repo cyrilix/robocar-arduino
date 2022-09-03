@@ -4,11 +4,11 @@ go 1.19
 
 require (
 	github.com/cyrilix/robocar-base v0.1.7
-	github.com/cyrilix/robocar-protobuf/go v1.0.5
+	github.com/cyrilix/robocar-protobuf/go v1.1.0
 	github.com/eclipse/paho.mqtt.golang v1.4.1
 	github.com/tarm/serial v0.0.0-20180830185346-98f6abe2eb07
-	go.uber.org/zap v1.21.0
-	google.golang.org/protobuf v1.28.0
+	go.uber.org/zap v1.23.0
+	google.golang.org/protobuf v1.28.1
 )
 
 require (
