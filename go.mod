@@ -1,22 +1,20 @@
 module github.com/cyrilix/robocar-arduino
 
-go 1.19
+go 1.21
 
 require (
-	github.com/cyrilix/robocar-base v0.1.7
-	github.com/cyrilix/robocar-protobuf/go v1.1.0
-	github.com/eclipse/paho.mqtt.golang v1.4.1
+	github.com/cyrilix/robocar-base v0.1.8
+	github.com/cyrilix/robocar-protobuf/go v1.3.1
+	github.com/eclipse/paho.mqtt.golang v1.4.3
 	github.com/tarm/serial v0.0.0-20180830185346-98f6abe2eb07
-	go.uber.org/zap v1.23.0
-	google.golang.org/protobuf v1.28.1
+	go.uber.org/zap v1.25.0
+	google.golang.org/protobuf v1.31.0
 )
 
 require (
-	github.com/golang/protobuf v1.5.2 // indirect
-	github.com/gorilla/websocket v1.4.2 // indirect
-	go.uber.org/atomic v1.7.0 // indirect
-	go.uber.org/multierr v1.6.0 // indirect
-	golang.org/x/net v0.0.0-20210405180319-a5a99cb37ef4 // indirect
-	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c // indirect
-	golang.org/x/sys v0.0.0-20210510120138-977fb7262007 // indirect
+	github.com/gorilla/websocket v1.5.0 // indirect
+	go.uber.org/multierr v1.10.0 // indirect
+	golang.org/x/net v0.9.0 // indirect
+	golang.org/x/sync v0.1.0 // indirect
+	golang.org/x/sys v0.11.0 // indirect
 )
