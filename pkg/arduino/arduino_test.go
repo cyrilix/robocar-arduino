@@ -118,6 +118,10 @@ func TestArduinoPart_Update(t *testing.T) {
 		{"DriveMode: user",
 			fmt.Sprintf("12390,%d,%d,%d,%d,%d,%d,%d,%d,%d,50\n", channel1, channel2, channel3, channel4, channel5, 1003, channel7, channel8, channel9),
 			defaultPwmThrottleConfig, -1., -1., events.DriveMode_USER, false},
+		// DriveMode: copilot
+		{"DriveMode: copilot",
+			fmt.Sprintf("12390,%d,%d,%d,%d,%d,%d,%d,%d,%d,50\n", channel1, channel2, channel3, channel4, channel5, 1250, channel7, channel8, channel9),
+			defaultPwmThrottleConfig, -1., -1., events.DriveMode_COPILOT, false},
 
 		{"Sterring: over left", fmt.Sprintf("12395,%d,%d,%d,%d,%d,%d,%d,%d,%d,50\n", 99, channel2, channel3, channel4, channel5, channel6, channel7, channel8, channel9),
 			defaultPwmThrottleConfig, -1., -1., events.DriveMode_USER, false},

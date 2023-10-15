@@ -2,8 +2,8 @@ github.com/benbjohnson/clock v1.3.0 h1:ip6w0uFQkncKQ979AypyG0ER7mqUSBdKLOgAle/AT
 github.com/benbjohnson/clock v1.3.0/go.mod h1:J11/hYXuz8f4ySSvYwY0FKfm+ezbsZBKZxNJlLklBHA=
 github.com/cyrilix/robocar-base v0.1.8 h1:9hfH9rCcyGXR0dtESIhI9tCrK9juq+dSnJXCxCF2LVw=
 github.com/cyrilix/robocar-base v0.1.8/go.mod h1:oJnfYjoz2PX16BD8I8LJ14kRQt1zbFb7XaUHtUEZgjg=
-github.com/cyrilix/robocar-protobuf/go v1.3.1 h1:SSKf2g3H7V0PBaecowk6GuWLHhDlMQbo6q6PlgJcZsA=
-github.com/cyrilix/robocar-protobuf/go v1.3.1/go.mod h1:69ZGmxS2JufIxGZPEKvAMZj5b1fVMVG3QTyFlCCHGtg=
+github.com/cyrilix/robocar-protobuf/go v1.4.0 h1:ZMN2zjn2iplsbHoBrjiI7d3HdNutWUB+NcVDh2mFcqM=
+github.com/cyrilix/robocar-protobuf/go v1.4.0/go.mod h1:69ZGmxS2JufIxGZPEKvAMZj5b1fVMVG3QTyFlCCHGtg=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/eclipse/paho.mqtt.golang v1.4.3 h1:2kwcUGn8seMUfWndX0hGbvH8r7crgcJguQNCyp70xik=

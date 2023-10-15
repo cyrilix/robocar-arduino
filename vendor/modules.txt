@@ -2,7 +2,7 @@
 ## explicit; go 1.21
 github.com/cyrilix/robocar-base/cli
 github.com/cyrilix/robocar-base/service
-# github.com/cyrilix/robocar-protobuf/go v1.3.1
+# github.com/cyrilix/robocar-protobuf/go v1.4.0
 ## explicit; go 1.21
 github.com/cyrilix/robocar-protobuf/go/events
 # github.com/eclipse/paho.mqtt.golang v1.4.3

@@ -4,7 +4,7 @@ go 1.21
 
 require (
 	github.com/cyrilix/robocar-base v0.1.8
-	github.com/cyrilix/robocar-protobuf/go v1.3.1
+	github.com/cyrilix/robocar-protobuf/go v1.4.0
 	github.com/eclipse/paho.mqtt.golang v1.4.3
 	github.com/tarm/serial v0.0.0-20180830185346-98f6abe2eb07
 	go.uber.org/zap v1.25.0

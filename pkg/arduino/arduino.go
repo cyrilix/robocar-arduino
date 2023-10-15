@@ -287,7 +287,12 @@ func (a *Part) processChannel6(v string) {
 		// No value, ignore it
 		return
 	}
-	if value > 1800 {
+	if value <= 1800 && value > 1200 {
+		if a.driveMode != events.DriveMode_COPILOT {
+			zap.S().Infof("Update channel 6 'drive-mode' with value %v, new user_mode: %v", value, events.DriveMode_PILOT)
+			a.driveMode = events.DriveMode_COPILOT
+		}
+	} else if value > 1800 {
 		if a.driveMode != events.DriveMode_PILOT {
 			zap.S().Infof("Update channel 6 'drive-mode' with value %v, new user_mode: %v", value, events.DriveMode_PILOT)
 			a.driveMode = events.DriveMode_PILOT
